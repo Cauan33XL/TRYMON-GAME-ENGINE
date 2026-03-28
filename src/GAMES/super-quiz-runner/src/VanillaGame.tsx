@@ -62,7 +62,20 @@ export default function VanillaGame() {
 
     return (
         <div className="wrap">
-            <div ref={containerRef} style={{width: '100%', height: '100%'}} />
+            <div 
+                ref={containerRef} 
+                className="game-container"
+                style={{
+                    width: '95vw', 
+                    height: '92vh', 
+                    margin: 'auto', 
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: '8px',
+                    border: '5px solid #fff',
+                    boxShadow: '0 20px 80px rgba(0,0,0,0.8)'
+                }} 
+            />
             
             <div className={`feedback ${feedback.type} ${feedback.visible ? 'show' : ''}`}>{feedback.text}</div>
             
@@ -209,7 +222,7 @@ export default function VanillaGame() {
                     </div>
 
                     <div className="action-btns">
-                        <button className="action-btn start-btn" onClick={() => engineRef.current?.initLevel() || globals.setGameState(STATES.RUNNING)}>INICIAR JOGO</button>
+                        <button className="action-btn start-btn" onClick={() => engineRef.current?.initLevel()}>INICIAR JOGO</button>
                         <button className="action-btn back-btn" onClick={() => globals.setGameState(STATES.MENU)}>VOLTAR</button>
                     </div>
                 </div>

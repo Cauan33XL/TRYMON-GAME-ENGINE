@@ -1,254 +1,235 @@
-/* --- CSS Integrado --- */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 :root {
-    --primary-color: #00ffff; /* Ciano Neon */
-    --secondary-color: #ff00ff; /* Magenta Neon */
-    --tertiary-color: #ffff00; /* Amarelo Neon (para o Quiz) */
-    --bg-color: #1a1a1a;
-    --text-color: #cccccc;
-    --highlight-color: #ffffff;
-    --scanline-color: rgba(0, 0, 0, 0.3);
+  --industrial-red: #cc0000;
+  --dark-red: #660000;
+  --bright-red: #ff3333;
+  --bg-color: #050505;
+  --text-color: #ffffff;
+  --scanline-color: rgba(5, 0, 0, 0.5);
 }
 
-/* --- Reset e Configuração do Corpo --- */
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-body, html {
-    height: 100%;
-    overflow: hidden; /* Impede o scroll */
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    font-family: 'Press Start 2P', monospace;
+body, html, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Press Start 2P', monospace;
 }
 
-/* --- Efeito de Scanlines (Tela Antiga) --- */
-body::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-        to bottom,
-        transparent,
-        transparent 2px,
-        var(--scanline-color) 2px,
-        var(--scanline-color) 4px
-    );
-    z-index: 1000; /* Fica por cima de tudo */
+/* CRT Scanlines Overlay */
+.crts-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    var(--scanline-color) 2px,
+    var(--scanline-color) 4px
+  );
+  z-index: 1000;
 }
 
-/* --- Contêiner Principal --- */
-.screen-container {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-    text-align: center;
-    padding: 20px;
+/* ========== HOME VIEW ========== */
+
+.home-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  position: relative;
+  background: radial-gradient(circle at center, #1a0000 0%, #000000 100%);
 }
 
-/* --- Título --- */
-.title {
-    font-size: 2.5rem;
-    color: var(--primary-color);
-    text-shadow: 0 0 10px var(--primary-color), 0 0 5px #fff;
-    margin-bottom: 50px;
-    animation: flicker 3s infinite alternate;
+.home-title {
+  font-size: 4rem;
+  color: var(--bright-red);
+  text-align: center;
+  text-shadow: 0 0 10px var(--industrial-red), 0 0 20px var(--dark-red);
+  margin-bottom: 80px;
+  position: relative;
+  z-index: 10;
 }
 
-/* --- Carrossel de Seleção --- */
-.selection-carousel {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 25px; /* Espaço entre os cartões */
-    width: 100%;
-    /* Ajusta para telas pequenas, permitindo scroll horizontal se necessário */
-    overflow-x: auto; 
-    padding: 20px 0;
+/* Glitch effect for title */
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-color);
+}
+.glitch::before {
+  left: 3px;
+  text-shadow: -2px 0 red;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim 5s infinite linear alternate-reverse;
+}
+.glitch::after {
+  left: -3px;
+  text-shadow: -2px 0 #550000;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim2 3s infinite linear alternate-reverse;
 }
 
-/* --- Cartão de Jogo --- */
-.game-card {
-    background: #2b2b2b;
-    border: 3px solid var(--text-color);
-    padding: 20px;
-    width: 200px;
-    height: 250px;
-    cursor: pointer;
-    flex-shrink: 0; /* Impede que os cartões encolham */
-    
-    /* Efeito de "longe" */
-    transform: scale(0.8);
-    opacity: 0.6;
-    
-    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+@keyframes glitch-anim {
+  0% { clip: rect(20px, 9999px, 30px, 0); }
+  20% { clip: rect(60px, 9999px, 70px, 0); }
+  40% { clip: rect(10px, 9999px, 50px, 0); }
+  60% { clip: rect(80px, 9999px, 90px, 0); }
+  80% { clip: rect(40px, 9999px, 50px, 0); }
+  100% { clip: rect(30px, 9999px, 80px, 0); }
+}
+@keyframes glitch-anim2 {
+  0% { clip: rect(15px, 9999px, 25px, 0); }
+  20% { clip: rect(55px, 9999px, 65px, 0); }
+  40% { clip: rect(5px, 9999px, 45px, 0); }
+  60% { clip: rect(75px, 9999px, 85px, 0); }
+  80% { clip: rect(35px, 9999px, 45px, 0); }
+  100% { clip: rect(25px, 9999px, 75px, 0); }
 }
 
-.game-card h2 {
-    font-size: 1rem;
-    color: var(--highlight-color);
-    margin-bottom: 20px;
-    /* Garante que o texto não quebre estranho */
-    height: 40px; 
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.start-button {
+  background: transparent;
+  color: var(--bright-red);
+  font-family: inherit;
+  font-size: 1.5rem;
+  padding: 20px 40px;
+  border: 4px solid var(--industrial-red);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s;
+  z-index: 10;
+  text-shadow: 0 0 5px var(--bright-red);
+  box-shadow: inset 0 0 10px var(--dark-red), 0 0 15px var(--dark-red);
 }
 
-/* --- Prévia Visual do Jogo (CSS Art) --- */
-.game-preview {
-    width: 100%;
-    height: 120px;
-    background: #000;
-    border: 2px solid var(--text-color);
-    margin: 0 auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
+.start-button:hover {
+  background: var(--industrial-red);
+  color: #fff;
+  box-shadow: 0 0 30px var(--bright-red);
 }
 
-/* Snake Art */
-#preview-snake .snake-body {
-    width: 10px;
-    height: 10px;
-    background-color: var(--primary-color);
-    box-shadow: 
-        10px 0 0 var(--primary-color),
-        20px 0 0 var(--primary-color),
-        20px 10px 0 var(--primary-color),
-        20px 20px 0 var(--primary-color),
-        30px 20px 0 var(--primary-color);
+.start-button:active {
+  transform: scale(0.95);
 }
 
-/* Pong Art */
-#preview-pong {
-    justify-content: space-between;
-    padding: 10px;
-}
-#preview-pong .paddle {
-    width: 10px;
-    height: 40px;
-    background-color: var(--primary-color);
-}
-#preview-pong .ball {
-    width: 10px;
-    height: 10px;
-    background-color: var(--highlight-color);
+.decorations {
+  position: absolute;
+  bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: var(--dark-red);
+  font-size: 0.8rem;
 }
 
-/* Tetris Art */
-#preview-tetris {
-    position: relative;
-}
-#preview-tetris .tetromino {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background-color: var(--secondary-color);
-    box-shadow: 
-        20px 0 0 var(--secondary-color),
-        0 20px 0 var(--secondary-color),
-        -20px 0 0 var(--secondary-color);
-    animation: fall 2s infinite linear;
+.decor-line {
+  width: 100px;
+  height: 2px;
+  background: var(--dark-red);
 }
 
-/* === NOVO CSS === */
+/* ========== SELECTION VIEW ========== */
 
-/* Quiz Art (Novo) */
-#preview-quiz {
-    align-items: flex-end; /* Coloca o '?' na base */
-    padding-bottom: 10px;
+.selection-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background: repeating-linear-gradient(45deg, #0a0000, #0a0000 10px, #000 10px, #000 20px);
+  position: relative;
 }
 
-#preview-quiz .question-mark {
-    font-size: 4rem;
-    color: var(--tertiary-color); /* Amarelo */
-    text-shadow: 0 0 10px var(--tertiary-color);
-    animation: jump 1.2s infinite ease-in-out;
-    position: relative; /* Para o pulo */
+.selection-title {
+  color: var(--bright-red);
+  font-size: 2rem;
+  margin-bottom: 60px;
+  text-shadow: 0 0 10px var(--dark-red);
+  z-index: 10;
 }
 
-/* === FIM DO NOVO CSS === */
-
-
-/* --- Estado Ativo e Selecionado --- */
-.game-card.active {
-    /* Efeito de "perto" */
-    transform: scale(1.1);
-    opacity: 1;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 25px var(--primary-color);
+.selection-grid {
+  display: flex;
+  gap: 50px;
+  z-index: 10;
 }
 
-.game-card.selected {
-    /* Animação de seleção */
-    animation: select-pulse 0.5s;
+.square-btn {
+  width: 250px;
+  height: 250px;
+  background: #0f0000;
+  border: 4px solid var(--industrial-red);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: var(--bright-red);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: inset 0 0 20px rgba(255, 0, 0, 0.1), 0 10px 20px rgba(0,0,0,0.5);
 }
 
-@keyframes select-pulse {
-    0% { transform: scale(1.1); }
-    50% { transform: scale(1.2); opacity: 0.5; }
-    100% { transform: scale(1.1); opacity: 1; }
+.square-btn .icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 5px var(--bright-red));
 }
 
-
-/* --- Instruções --- */
-.instructions {
-    margin-top: 50px;
-    font-size: 0.9rem;
-    color: var(--highlight-color);
-    animation: blink 1.5s infinite;
+.square-btn span {
+  font-size: 1.2rem;
+  line-height: 1.5;
 }
 
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+.square-btn:hover {
+  transform: translateY(-10px) scale(1.05);
+  background: #2a0000;
+  box-shadow: inset 0 0 40px rgba(255, 50, 50, 0.3), 0 15px 30px rgba(200,0,0,0.4);
+  border-color: var(--bright-red);
 }
 
-/* --- Animação do Título --- */
-@keyframes flicker {
-    0%, 18%, 22%, 25%, 53%, 57%, 100% {
-        text-shadow:
-            0 0 4px #fff,
-            0 0 11px #fff,
-            0 0 19px #fff,
-            0 0 40px var(--primary-color),
-            0 0 80px var(--primary-color),
-            0 0 90px var(--primary-color),
-            0 0 100px var(--primary-color),
-            0 0 150px var(--primary-color);
-    }
-    20%, 24%, 55% {         
-        text-shadow: none;
-    }
+.square-btn:active {
+  transform: scale(0.95);
 }
 
-/* Animação de Queda (Tetris) */
-@keyframes fall {
-    from { top: -30px; }
-    to { top: 110px; }
+/* ========== GAMES VIEW OVERLAYS ========== */
+
+.fade-out-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease-in-out;
+  z-index: 50;
 }
 
-/* === NOVA ANIMAÇÃO === */
-
-/* Animação de Pulo (Quiz) */
-@keyframes jump {
-    0%, 100% {
-        transform: translateY(0px);
-    }
-    50% {
-        transform: translateY(-35px); /* Pula 35px para cima */
-    }
+.fade-out-overlay.active {
+  opacity: 1;
 }
 
-/* === FIM DA NOVA ANIMAÇÃO === */
+.back-btn:hover {
+  background: rgba(255, 50, 50, 0.2) !important;
+}

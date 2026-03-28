@@ -1,6 +1,5 @@
 import { globals, STATES } from './Globals';
 import { EventBus } from '../EventBus';
-import { sound } from './Sound';
 
 export const keys: Record<string, boolean> = {};
 

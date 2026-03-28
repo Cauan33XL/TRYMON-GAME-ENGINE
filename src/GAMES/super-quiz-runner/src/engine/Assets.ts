@@ -25,7 +25,7 @@ export const ASSETS = {
   svgEnemyProjectile: `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12'><circle cx='6' cy='6' r='5' fill='#ef4444' stroke='#dc2626' stroke-width='1'/></svg>`
 };
 
-function svgToImage(svg){ 
+function svgToImage(svg: string){ 
     const img = new Image(); 
     img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg); 
     return img; 

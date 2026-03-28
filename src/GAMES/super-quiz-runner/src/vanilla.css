@@ -1,5 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  background: #0b0b0d;
+}
+
 :root {
   --bg-dark:#0b0b0d; --panel:#0f1113; --accent:#ffd54f; --hud-bg: rgba(0,0,0,0.45);
   --good: #34d399; --bad: #ff6b6b; --powerup: #8b5cf6; --enemy: #ef4444; --boss: #dc2626;
@@ -12,7 +21,7 @@
 }
 
 canvas {
-  display: block; border: 6px solid #fff; box-shadow: 0 10px 60px rgba(0,0,0,0.7);
+  display: block; 
   background: linear-gradient(#77b6ff, #5b9be8);
 }
 

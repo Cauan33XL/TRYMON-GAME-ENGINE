@@ -1,7 +1,3 @@
-import { globals, CONFIG, triggerScreenShake, spawnParticles } from './Globals';
-import { IMAGES } from './Assets';
-import { input } from './Input';
-import { sound } from './Sound';
 
 export function clamp(v: number, a: number, b: number){ return Math.max(a, Math.min(b, v)); }
 export function random(min: number, max: number) { return Math.random() * (max - min) + min; }
@@ -17,7 +13,7 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 }
 
 export function wrapText(context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number){
-    const words = text.split(' '), lines = [];
+    const words = text.split(' ');
     let line = '';
     for(let n=0;n<words.length;n++){
         const testLine = line + words[n] + ' ';
