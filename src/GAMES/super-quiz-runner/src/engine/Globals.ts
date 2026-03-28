@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { EventBus } from '../EventBus';
 
 export const CONFIG = {
@@ -31,6 +32,7 @@ export interface GlobalState {
     particles: any[];
     screenShake: { duration: number; magnitude: number };
     score: number;
+    coinCount: number;
     lives: number;
     currentLevel: number;
     gameTime: number;
@@ -45,7 +47,11 @@ export interface GlobalState {
         platform: string | null;
         enemy: string | null;
         music: string | null;
+        isPlayer3D?: boolean;
     };
+    threeScene: THREE.Scene | null;
+    threeCamera: THREE.PerspectiveCamera | null;
+    threeRenderer: THREE.WebGLRenderer | null;
     quizManager: any;
     quizTriggerX: number;
     currentQuiz: any;
@@ -65,7 +71,7 @@ export const globals: GlobalState = {
     player: null, camera: null, platforms: [], backLayers: [], 
     enemies: [], powerups: [], coins: [], projectiles: [], enemyProjectiles: [], boss: null,
     particles: [], screenShake: {duration: 0, magnitude: 0},
-    score: 0, lives: 3, currentLevel: 0, gameTime: 0, quizCount: 0, correctAnswers: 0, powerupsCollected: 0,
+    score: 0, coinCount: 0, lives: 3, currentLevel: 0, gameTime: 0, quizCount: 0, correctAnswers: 0, powerupsCollected: 0,
     selectedCharacter: 'default', 
     playerDisplayName: 'HERÓI',
     customAssets: {
@@ -73,8 +79,12 @@ export const globals: GlobalState = {
         background: null,
         platform: null,
         enemy: null,
-        music: null
+        music: null,
+        isPlayer3D: false
     },
+    threeScene: null,
+    threeCamera: null,
+    threeRenderer: null,
     quizManager: null, quizTriggerX: 0, currentQuiz: null,
     missionProgress: {score:0, correctQuizzes:0, coins:0, enemiesDefeated:0, powerupsUsed:0},
     

@@ -1,20 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { globals, STATES } from './engine/Globals';
-import { initLoop, stopLoop, startGame } from './engine/GameLoop';
+import { ThreeEngine } from './engine/ThreeEngine';
 import { EventBus } from './EventBus';
 import './vanilla.css';
 
 export default function VanillaGame() {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const engineRef = useRef<ThreeEngine | null>(null);
     const [gameState, setGameState] = useState<string>(STATES.LOADING);
     const [feedback, setFeedback] = useState<{text: string, type: string, visible: boolean}>({text: '', type: 'good', visible: false});
     const [hud, setHud] = useState<any>(null);
     const [progress, setProgress] = useState(0);
 
     useEffect(() => {
-        if (!canvasRef.current) return;
-        globals.canvas = canvasRef.current;
-        globals.ctx = canvasRef.current.getContext('2d');
+        if (!containerRef.current) return;
         
         // Simulating Loading
         const interval = setInterval(() => {
@@ -28,7 +27,8 @@ export default function VanillaGame() {
             });
         }, 100);
 
-        initLoop();
+        const engine = new ThreeEngine(containerRef.current);
+        engineRef.current = engine;
 
         const onStateChange = (state: string) => setGameState(state);
         const onFeedback = (data: any) => {
@@ -41,8 +41,10 @@ export default function VanillaGame() {
             else if (globals.gameState === STATES.GAME_OVER) { globals.setGameState(STATES.CHAR_SELECT); }
         };
 
-        const onFileLoad = (type: string, url: string) => {
+        const onFileLoad = (type: string, url: string, isGLB?: boolean) => {
             (globals.customAssets as any)[type] = url;
+            if (type === 'player' && isGLB) (globals.customAssets as any).isPlayer3D = true;
+            else if (type === 'player') (globals.customAssets as any).isPlayer3D = false;
             setGameState(prev => prev + " ");
         };
         (window as any).handleFileLoad = onFileLoad;
@@ -52,19 +54,15 @@ export default function VanillaGame() {
         EventBus.on('sync-hud', onSyncHud);
         EventBus.on('action-start', onStartAction);
         
-        const c = canvasRef.current;
-        c.addEventListener('click', onStartAction);
-
         return () => {
-            stopLoop();
+            engine.cleanup();
             EventBus.off('state-change'); EventBus.off('feedback'); EventBus.off('sync-hud'); EventBus.off('action-start');
-            c.removeEventListener('click', onStartAction);
         };
     }, []);
 
     return (
         <div className="wrap">
-            <canvas ref={canvasRef} id="gameCanvas" width="900" height="600"></canvas>
+            <div ref={containerRef} style={{width: '100%', height: '100%'}} />
             
             <div className={`feedback ${feedback.type} ${feedback.visible ? 'show' : ''}`}>{feedback.text}</div>
             
@@ -155,9 +153,23 @@ export default function VanillaGame() {
                     
                     <div className="custom-grid">
                         <div className="custom-item">
+                            <span className="custom-item-label">Jogador</span>
+                            <div className="custom-item-icon">👤</div>
+                            <button className="load-btn" onClick={() => { const el = document.getElementById('player-upload'); if(el) el.click(); }}>
+                                {globals.customAssets.player ? 'ON' : 'CARREGAR'}
+                            </button>
+                            <input id="player-upload" type="file" accept="image/*,.glb,.gltf" style={{display:'none'}} onChange={(e) => {
+                                const file = e.target.files?.[0]; 
+                                if(file) {
+                                    const isGLB = file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf');
+                                    (window as any).handleFileLoad('player', URL.createObjectURL(file), isGLB);
+                                }
+                            }} />
+                        </div>
+                        <div className="custom-item">
                             <span className="custom-item-label">Música (MP3)</span>
                             <div className="custom-item-icon">🎵</div>
-                            <button className="load-btn" onClick={() => (document.getElementById('music-upload') as any).click()}>
+                            <button className="load-btn" onClick={() => { const el = document.getElementById('music-upload'); if(el) el.click(); }}>
                                 {globals.customAssets.music ? 'ON' : 'CARREGAR'}
                             </button>
                             <input id="music-upload" type="file" accept="audio/*" style={{display:'none'}} onChange={(e) => {
@@ -191,17 +203,13 @@ export default function VanillaGame() {
                                 {globals.customAssets.enemy ? 'ON' : 'CARREGAR'}
                             </button>
                             <input id="enemy-upload" type="file" accept="image/*" style={{display:'none'}} onChange={(e) => {
-                                const file = e.target.files?.[0]; if(file) {
-                                    const url = URL.createObjectURL(file);
-                                    (window as any).handleFileLoad('enemy', url);
-                                    if(globals.selectedCharacter === 'custom') (window as any).handleFileLoad('player', url);
-                                }
+                                const file = e.target.files?.[0]; if(file) (window as any).handleFileLoad('enemy', URL.createObjectURL(file));
                             }} />
                         </div>
                     </div>
 
                     <div className="action-btns">
-                        <button className="action-btn start-btn" onClick={() => startGame()}>INICIAR JOGO</button>
+                        <button className="action-btn start-btn" onClick={() => engineRef.current?.initLevel() || globals.setGameState(STATES.RUNNING)}>INICIAR JOGO</button>
                         <button className="action-btn back-btn" onClick={() => globals.setGameState(STATES.MENU)}>VOLTAR</button>
                     </div>
                 </div>

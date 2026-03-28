@@ -25,6 +25,26 @@ export const sound = {
         g.gain.exponentialRampToValueAtTime(0.001, now + dur);
         o.stop(now + dur + 0.02);
     },
+    playPositional(pos: {x: number, y: number, z: number}, freq=440, dur=0.12, type='sine', vol=0.9){
+        if(!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        const p = this.ctx.createPanner();
+        
+        p.panningModel = 'HRTF';
+        p.distanceModel = 'inverse';
+        p.positionX.setValueAtTime(pos.x, now);
+        p.positionY.setValueAtTime(pos.y, now);
+        p.positionZ.setValueAtTime(pos.z, now);
+        
+        o.type = type as any; o.frequency.setValueAtTime(freq, now);
+        g.gain.setValueAtTime(vol * this.sfxVolume, now);
+        
+        o.connect(g); g.connect(p); p.connect(this.master);
+        o.start(now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        o.stop(now + dur + 0.02);
+    },
     playMusic() {
         if (!this.ctx || this.musicPlaying) return;
         
@@ -81,10 +101,16 @@ export const sound = {
     jump(){ this.playTone(520,0.10,'square',0.9); },
     fall(){ this.playTone(120,0.4,'sawtooth',0.95); },
     land(){ this.playTone(300, 0.08, 'square', 0.6); },
-    coin(){ this.playTone(659, 0.1, 'sine', 0.7); this.playTone(880, 0.08, 'sine', 0.6, 0.1); },
+    coin(pos?: {x:number, y:number, z:number}){ 
+        if(pos) this.playPositional(pos, 659, 0.1, 'sine', 0.7);
+        else { this.playTone(659, 0.1, 'sine', 0.7); this.playTone(880, 0.08, 'sine', 0.6, 0.1); }
+    },
     powerup(){ this.playTone(1046, 0.2, 'sine', 0.8); },
     dash(){ this.playTone(392, 0.1, 'square', 0.8); this.playTone(523, 0.08, 'square', 0.7, 0.05); },
-    enemyHit(){ this.playTone(110, 0.3, 'sawtooth', 0.9); },
+    enemyHit(pos?: {x:number, y:number, z:number}){ 
+        if(pos) this.playPositional(pos, 110, 0.3, 'sawtooth', 0.9);
+        else this.playTone(110, 0.3, 'sawtooth', 0.9);
+    },
     shoot(){ this.playTone(784, 0.1, 'square', 0.7); },
     bossSpawn(){ this.playTone(98, 0.5, 'sawtooth', 0.9); this.playTone(73, 0.5, 'sawtooth', 0.8, 0.2); },
     bossDefeated(){ this.playTone(523, 0.2, 'sine', 0.8); this.playTone(659, 0.2, 'sine', 0.7, 0.1); this.playTone(784, 0.2, 'sine', 0.6, 0.2); },
