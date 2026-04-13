@@ -21,6 +21,8 @@ pub enum BinaryFormat {
     Rpm,
     /// Generic ELF executable
     Elf,
+    /// Trymon custom package format
+    Trymon,
     /// Unknown format
     Unknown,
 }
@@ -32,6 +34,7 @@ impl std::fmt::Display for BinaryFormat {
             Self::Deb => write!(f, "deb"),
             Self::Rpm => write!(f, "rpm"),
             Self::Elf => write!(f, "ELF"),
+            Self::Trymon => write!(f, "Trymon"),
             Self::Unknown => write!(f, "Unknown"),
         }
     }
@@ -80,10 +83,14 @@ pub struct PackageMetadata {
     pub architecture: Option<String>,
     /// Description
     pub description: Option<String>,
-    /// Maintainer
+    /// Maintainer / Author
     pub maintainer: Option<String>,
     /// Dependencies
     pub dependencies: Vec<String>,
+    /// Icon data (Base64)
+    pub icon: Option<String>,
+    /// Entry point
+    pub entry: Option<String>,
 }
 
 /// Binary data stored in memory
@@ -150,6 +157,7 @@ impl BinaryLoader {
             BinaryFormat::Deb => self.parse_deb(data, &mut info)?,
             BinaryFormat::Rpm => self.parse_rpm(data, &mut info)?,
             BinaryFormat::Elf => self.parse_elf(data, &mut info)?,
+            BinaryFormat::Trymon => self.parse_trymon(data, &mut info)?,
             BinaryFormat::Unknown => {
                 return Err(KernelError::UnsupportedFormat(name.to_string()));
             }
@@ -264,6 +272,8 @@ impl BinaryLoader {
             description: None,
             maintainer: None,
             dependencies: Vec::new(),
+            icon: None,
+            entry: None,
         })
     }
 
@@ -289,6 +299,8 @@ impl BinaryLoader {
                 description: None,
                 maintainer: None,
                 dependencies: Vec::new(),
+                icon: None,
+                entry: None,
             });
         }
 
@@ -299,13 +311,67 @@ impl BinaryLoader {
 
     /// Parse generic ELF executable
     fn parse_elf(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
-        // Verify ELF magic bytes
-        if data.len() < 4 || &data[0..4] != b"\x7fELF" {
-            return Err(KernelError::InvalidBinary("Not a valid ELF file".into()));
-        }
-
         info.entry_point = Some(format!("/usr/bin/{}", info.name));
         Ok((Some(data.to_vec()), None))
+    }
+
+    /// Parse Trymon package format (.trymon)
+    /// Structure:
+    /// - Magic: "TRYM" (4 bytes)
+    /// - Version: 0x01 (1 byte)
+    /// - Meta Length: u32 (4 bytes, LE)
+    /// - Metadata JSON
+    /// - Binary Length: u32 (4 bytes, LE)
+    /// - Binary Data
+    fn parse_trymon(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+        log::info!("Parsing Trymon package: {}", info.name);
+
+        if data.len() < 13 || &data[0..4] != b"TRYM" {
+            return Err(KernelError::InvalidBinary("Not a valid Trymon package".into()));
+        }
+
+        let version = data[4];
+        if version != 1 {
+            return Err(KernelError::UnsupportedFormat(format!("Trymon package version {} not supported", version)));
+        }
+
+        // Meta Length
+        let meta_len = u32::from_le_bytes(data[5..9].try_into().unwrap()) as usize;
+        if data.len() < 9 + meta_len + 4 {
+            return Err(KernelError::ParseError("Trymon package truncated (metadata)".into()));
+        }
+
+        // Metadata JSON
+        let meta_json = std::str::from_utf8(&data[9..9+meta_len])
+            .map_err(|e| KernelError::ParseError(format!("Invalid metadata UTF-8: {}", e)))?;
+        
+        let metadata: PackageMetadata = serde_json::from_str(meta_json)
+            .map_err(|e| KernelError::ParseError(format!("Invalid metadata JSON: {}", e)))?;
+
+        log::info!("Trymon metadata loaded: {:?}", metadata.name);
+
+        // Binary Length
+        let bin_offset = 9 + meta_len;
+        let bin_len = u32::from_le_bytes(data[bin_offset..bin_offset+4].try_into().unwrap()) as usize;
+        
+        if data.len() < bin_offset + 4 + bin_len {
+            return Err(KernelError::ParseError("Trymon package truncated (binary)".into()));
+        }
+
+        let bin_data = data[bin_offset+4..bin_offset+4+bin_len].to_vec();
+
+        // Update info with metadata
+        if let Some(ref name) = metadata.name {
+            info.name = name.clone();
+        }
+        
+        if let Some(ref entry) = metadata.entry {
+            info.entry_point = Some(entry.clone());
+        } else {
+            info.entry_point = Some(format!("/usr/bin/{}", info.name));
+        }
+
+        Ok((Some(bin_data), Some(metadata)))
     }
 
     // ============================================================
@@ -324,9 +390,15 @@ impl BinaryLoader {
         if name.ends_with(".rpm") {
             return Ok(BinaryFormat::Rpm);
         }
+        if name.ends_with(".trymon") {
+            return Ok(BinaryFormat::Trymon);
+        }
 
         // Check magic bytes
         if data.len() >= 4 {
+            if &data[0..4] == b"TRYM" {
+                return Ok(BinaryFormat::Trymon);
+            }
             if &data[0..4] == b"\x7fELF" {
                 // Could be AppImage or plain ELF
                 if Self::find_magic(data, b"hsqs").is_some() {

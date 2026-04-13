@@ -214,6 +214,74 @@ impl ProcessManager {
         Ok(final_process)
     }
 
+    /// Execute a binary already present in the VFS
+    pub fn execute_vfs_binary(
+        &mut self,
+        vfs: &mut VirtualFileSystem,
+        path: &str,
+        name: &str,
+        extra_env: HashMap<String, String>,
+    ) -> Result<ProcessInfo> {
+        if !self.initialized {
+            return Err(KernelError::ExecutionError("ProcessManager not initialized".into()));
+        }
+
+        // Check process limit
+        if self.running_count() >= self.max_processes as usize {
+            return Err(KernelError::ExecutionError(
+                format!("Maximum process limit reached ({})", self.max_processes)
+            ));
+        }
+
+        let file = vfs.get_file(path)
+            .ok_or_else(|| KernelError::FileSystemError(format!("Binary not found in VFS: {}", path)))?;
+
+        if !file.executable {
+            return Err(KernelError::ExecutionError(format!("File is not executable: {}", path)));
+        }
+
+        let pid = format!("{}", self.process_counter);
+        self.process_counter += 1;
+
+        let now = Utc::now().timestamp();
+        
+        // Setup environment
+        let mut env = self.get_base_env();
+        for (k, v) in extra_env {
+            env.insert(k, v);
+        }
+
+        let process = ProcessInfo {
+            pid: pid.clone(),
+            name: name.to_string(),
+            binary_id: "vfs-execution".to_string(),
+            state: ProcessState::Running,
+            exit_code: None,
+            ppid: Some("1".to_string()),
+            children: Vec::new(),
+            memory_usage: (file.size as u64).min(50 * 1024 * 1024),
+            cpu_usage: 1.5,
+            start_time: now,
+            end_time: None,
+            cwd: vfs.cwd().to_string(),
+            env,
+            argv: vec![path.to_string()],
+            stdout: format!("Running {} from VFS...\n", name),
+            stderr: String::new(),
+            stdin_pending: String::new(),
+        };
+
+        self.processes.insert(pid.clone(), process.clone());
+        
+        // Add to init's children
+        if let Some(init) = self.processes.get_mut("1") {
+            init.children.push(pid.clone());
+        }
+
+        log::info!("VFS Process started: {} (PID: {})", name, pid);
+        Ok(process)
+    }
+
     /// Stop a running process
     pub fn stop_process(&mut self, pid: &str) -> Result<()> {
         let process = self.processes.get_mut(pid)
@@ -310,17 +378,23 @@ impl ProcessManager {
     // Helper functions
     // ============================================================
 
-    /// Get default environment for a binary
-    fn get_default_env(&self, binary: &BinaryInfo) -> HashMap<String, String> {
+    /// Get base Linux environment
+    fn get_base_env(&self) -> HashMap<String, String> {
         let mut env = HashMap::new();
-        
-        // Standard Linux environment
         env.insert("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
         env.insert("HOME".to_string(), "/root".to_string());
         env.insert("TERM".to_string(), "xterm-256color".to_string());
         env.insert("SHELL".to_string(), "/bin/bash".to_string());
         env.insert("USER".to_string(), "root".to_string());
         env.insert("LANG".to_string(), "C.UTF-8".to_string());
+        env
+    }
+
+    /// Get default environment for a binary
+    fn get_default_env(&self, binary: &BinaryInfo) -> HashMap<String, String> {
+        let mut env = self.get_base_env();
+        
+        // Standard Linux environment extras
         env.insert("LD_LIBRARY_PATH".to_string(), "/usr/lib:/usr/local/lib".to_string());
         
         // Binary-specific

@@ -116,6 +116,21 @@ export function kernel_status(): string;
  */
 export function kernel_stop_process(process_id: string): void;
 
+/**
+ * Install a loaded .trymon package
+ */
+export function kernel_trymon_install(binary_id: string): string;
+
+/**
+ * List all installed Trymon apps
+ */
+export function kernel_trymon_list_apps(): string;
+
+/**
+ * Run an installed Trymon app
+ */
+export function kernel_trymon_run_app(app_id: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -139,6 +154,9 @@ export interface InitOutput {
     readonly kernel_init: () => [number, number];
     readonly kernel_load_binary: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly kernel_status: () => [number, number];
+    readonly kernel_trymon_install: (a: number, b: number) => [number, number, number, number];
+    readonly kernel_trymon_list_apps: () => [number, number];
+    readonly kernel_trymon_run_app: (a: number, b: number) => [number, number, number, number];
     readonly kernel_stop_process: (a: number, b: number) => [number, number];
     readonly kernel_get_output: (a: number, b: number) => [number, number];
     readonly kernel_send_input: (a: number, b: number, c: number, d: number) => [number, number];

@@ -11,7 +11,7 @@ export interface BinaryMetadata {
   id: string;
   name: string;
   size: number;
-  type: 'appimage' | 'deb' | 'rpm' | 'unknown';
+  type: 'appimage' | 'deb' | 'rpm' | 'trymon' | 'unknown';
   uploaded_at: string;
   status: 'pending' | 'loaded' | 'running' | 'stopped' | 'error' | 'exited';
   path: string;

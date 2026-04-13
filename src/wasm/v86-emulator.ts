@@ -36,10 +36,11 @@ export interface BinaryFile {
   id: string;
   name: string;
   size: number;
-  type: 'appimage' | 'deb' | 'rpm' | 'unknown';
+  type: 'appimage' | 'deb' | 'rpm' | 'trymon' | 'unknown';
   data?: ArrayBuffer;
   path?: string;
   uploadedAt: Date;
+  metadata?: import('../bridge/trymonPackage').TrymonMetadata;
   status: 'pending' | 'loaded' | 'running' | 'stopped' | 'error' | 'exited';
   exitCode?: number;
 }
@@ -429,6 +430,52 @@ export class V86Emulator {
     }
   }
 
+  // --- Trymon Engine APIs ---
+
+  listTrymonApps(): any[] {
+    try {
+      const appsJson = rust.kernel_trymon_list_apps();
+      return JSON.parse(appsJson);
+    } catch (err) {
+      console.error('Failed to list Trymon apps:', err);
+      return [];
+    }
+  }
+
+  async runTrymonApp(appId: string): Promise<ExecutionResult> {
+    const startTime = Date.now();
+    try {
+      const resultJson = rust.kernel_trymon_run_app(appId);
+      const processInfo = JSON.parse(resultJson);
+      
+      return {
+        success: true,
+        output: `App started. PID: ${processInfo.pid}`,
+        exitCode: 0,
+        duration: Date.now() - startTime
+      };
+    } catch (err) {
+      console.error('Failed to run Trymon app:', err);
+      return {
+        success: false,
+        output: typeof err === 'string' ? err : 'App execution failed',
+        exitCode: -1,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+
+  async installTrymonApp(binaryId: string): Promise<string | null> {
+    try {
+      const resultJson = rust.kernel_trymon_install(binaryId);
+      const appInfo = JSON.parse(resultJson);
+      return appInfo.id;
+    } catch (err) {
+      console.error('Failed to install Trymon app:', err);
+      return null;
+    }
+  }
+
   cleanup(): void {
     this.stop();
     this.emulator = null;
@@ -560,7 +607,7 @@ export class V86Emulator {
   }
 }
 
-export function detectBinaryType(filename: string): 'appimage' | 'deb' | 'rpm' | 'unknown' {
+export function detectBinaryType(filename: string): 'appimage' | 'deb' | 'rpm' | 'trymon' | 'unknown' {
   const ext = filename.toLowerCase().split('.').pop();
   switch (ext) {
     case 'appimage':
@@ -569,6 +616,8 @@ export function detectBinaryType(filename: string): 'appimage' | 'deb' | 'rpm' |
       return 'deb';
     case 'rpm':
       return 'rpm';
+    case 'trymon':
+      return 'trymon';
     default:
       return 'unknown';
   }

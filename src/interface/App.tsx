@@ -8,7 +8,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEmulator, useBinaryFiles } from './hooks/useEmulator';
 import { useShellWasm } from './hooks/useShellWasm';
 import { ContextMenu, ContextMenuItem } from './components/ContextMenu';
-import { Cpu, Terminal, FolderOpen, Settings, Activity, FileCode, X, Minus, Square, Maximize2, Plus, RefreshCw, Info, Image as ImageIcon } from 'lucide-react';
+import TrymonLogo from './components/TrymonLogo';
+import { Cpu, Terminal, FolderOpen, Settings, Activity, FileCode, X, Minus, Square, Maximize2, Plus, RefreshCw, Info, Image as ImageIcon, Search, Power, User, ChevronRight } from 'lucide-react';
 import type { BinaryFile, V86State } from '../wasm/v86-emulator';
 
 interface WindowPosition {
@@ -40,6 +41,8 @@ interface DesktopIcon {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
+  x: number;
+  y: number;
 }
 
 function BootScreen({ onComplete }: { onComplete: () => void }) {
@@ -88,7 +91,7 @@ function BootScreen({ onComplete }: { onComplete: () => void }) {
     <div className="boot-screen">
       <div className="boot-logo">
         <div className="boot-icon">
-          <Cpu size={64} />
+          <TrymonLogo size={80} glow />
         </div>
         <h1>TRYMON OS</h1>
         <p className="boot-version">Version 1.0.0</p>
@@ -116,6 +119,10 @@ export default function App() {
   const [resizingWindow, setResizingWindow] = useState<{ id: string; direction: string } | null>(null);
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+  const [selection, setSelection] = useState<{ active: boolean; startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const [draggingIconId, setDraggingIconId] = useState<string | null>(null);
+  const [iconDragOffset, setIconDragOffset] = useState({ x: 0, y: 0 });
+  const iconDraggedRef = useRef(false);
 
   const desktopRef = useRef<HTMLDivElement>(null);
 
@@ -125,12 +132,25 @@ export default function App() {
     start,
     stop,
     mountBinary,
-    executeBinary
+    executeBinary,
+    listApps,
+    runApp
   } = useEmulator({
     memorySize: 128,
     videoMemorySize: 8,
     autostart: false
   });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [installedApps, setInstalledApps] = useState<any[]>([]);
+
+  // Refresh apps list when menu opens
+  useEffect(() => {
+    if (startMenuOpen && emulatorState.isReady) {
+      const apps = listApps();
+      setInstalledApps(apps);
+    }
+  }, [startMenuOpen, emulatorState.isReady, listApps]);
 
   const { files, addFile, removeFile } = useBinaryFiles();
   const shell = useShellWasm();
@@ -336,6 +356,155 @@ export default function App() {
     stop();
   }, [stop]);
 
+  // Desktop Icons State
+  const [icons, setIcons] = useState<DesktopIcon[]>([]);
+
+  useEffect(() => {
+    // Only initialize if icons list is empty to prevent resetting positions
+    setIcons(prev => {
+      if (prev.length > 0) return prev;
+      
+      const GRID_X = 100;
+      const GRID_Y = 110;
+      const MARGIN = 20;
+
+      return [
+        { id: 'terminal', label: 'Terminal', icon: <Terminal size={32} />, onClick: () => openWindow('terminal', 'Terminal', <Terminal size={16} />, <TerminalWindow shell={shell} />), x: MARGIN, y: MARGIN },
+        { id: 'files', label: 'Arquivos', icon: <FolderOpen size={32} />, onClick: () => openWindow('files', 'Gerenciador de Arquivos', <FolderOpen size={16} />, <FilesWindow files={files} onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} />), x: MARGIN, y: MARGIN + GRID_Y },
+        { id: 'binaries', label: 'Binários', icon: <FileCode size={32} />, onClick: () => openWindow('binaries', 'Gerenciador de Binários', <FileCode size={16} />, <BinariesWindow files={files} onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} onExecute={async (f) => { await mountBinary(f); executeBinary(f, { captureOutput: true }); }} />), x: MARGIN, y: MARGIN + GRID_Y * 2 },
+        { id: 'settings', label: 'Configurações', icon: <Settings size={32} />, onClick: () => openWindow('settings', 'Configurações do Sistema', <Settings size={16} />, <SettingsWindow />), x: MARGIN, y: MARGIN + GRID_Y * 3 },
+        { id: 'monitor', label: 'Monitor', icon: <Activity size={32} />, onClick: () => openWindow('monitor', 'Monitor do Sistema', <Activity size={16} />, <MonitorWindow state={emulatorState} />), x: MARGIN, y: MARGIN + GRID_Y * 4 },
+      ];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell.isReady]);
+
+  // Icon Dragging Handlers
+  const handleIconMouseDown = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Avoid desktop selection
+    if (e.button !== 0) return;
+
+    const icon = icons.find(i => i.id === id);
+    if (!icon) return;
+
+    setDraggingIconId(id);
+    iconDraggedRef.current = false;
+    setIconDragOffset({
+      x: e.clientX - icon.x,
+      y: e.clientY - icon.y
+    });
+  }, [icons]);
+
+  const handleIconMouseMove = useCallback((e: MouseEvent) => {
+    if (!draggingIconId) return;
+    iconDraggedRef.current = true;
+
+    const newX = e.clientX - iconDragOffset.x;
+    const newY = e.clientY - iconDragOffset.y;
+
+    setIcons(prev => prev.map(icon => 
+      icon.id === draggingIconId ? { ...icon, x: newX, y: newY } : icon
+    ));
+  }, [draggingIconId, iconDragOffset]);
+
+  const GRID_SIZE_X = 100;
+  const GRID_SIZE_Y = 110;
+  const MARGIN = 20;
+
+  const handleIconMouseUp = useCallback(() => {
+    if (!draggingIconId) return;
+
+    setIcons(prev => {
+      const draggedIcon = prev.find(i => i.id === draggingIconId);
+      if (!draggedIcon) return prev;
+
+      // Snap to grid
+      const snappedX = Math.max(MARGIN, Math.round((draggedIcon.x - MARGIN) / GRID_SIZE_X) * GRID_SIZE_X + MARGIN);
+      const snappedY = Math.max(MARGIN, Math.round((draggedIcon.y - MARGIN) / GRID_SIZE_Y) * GRID_SIZE_Y + MARGIN);
+
+      // Simple collision resolution (spiral-like search)
+      let finalX = snappedX;
+      let finalY = snappedY;
+      let offset = 0;
+      let direction = 0; // 0: Right, 1: Down, 2: Left, 3: Up
+
+      const isOccupied = (x: number, y: number, id: string) => 
+        prev.some(icon => icon.id !== id && icon.x === x && icon.y === y);
+
+      while (isOccupied(finalX, finalY, draggingIconId)) {
+        // Change direction every 2 steps at the same distance
+        if (offset % 10 === 0) direction = (direction + 1) % 4;
+        
+        if (direction === 0) finalX += GRID_SIZE_X;
+        else if (direction === 1) finalY += GRID_SIZE_Y;
+        else if (direction === 2) finalX -= GRID_SIZE_X;
+        else if (direction === 3) finalY -= GRID_SIZE_Y;
+        
+        finalX = Math.max(MARGIN, finalX);
+        finalY = Math.max(MARGIN, finalY);
+        offset++;
+
+        if (offset > 100) break; // Safety break
+      }
+
+      return prev.map(icon => 
+        icon.id === draggingIconId ? { ...icon, x: finalX, y: finalY } : icon
+      );
+    });
+
+    setDraggingIconId(null);
+  }, [draggingIconId]);
+
+  useEffect(() => {
+    if (draggingIconId) {
+      window.addEventListener('mousemove', handleIconMouseMove);
+      window.addEventListener('mouseup', handleIconMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleIconMouseMove);
+        window.removeEventListener('mouseup', handleIconMouseUp);
+      };
+    }
+  }, [draggingIconId, handleIconMouseMove, handleIconMouseUp]);
+
+  // Desktop Selection Handlers
+  const handleDesktopMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only left click
+    if (e.target !== desktopRef.current) return; // Only if clicking on the background
+
+    setSelection({
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      endX: e.clientX,
+      endY: e.clientY
+    });
+  }, []);
+
+  const handleDesktopMouseMove = useCallback((e: MouseEvent) => {
+    if (!selection?.active) return;
+    
+    setSelection(prev => prev ? {
+      ...prev,
+      endX: e.clientX,
+      endY: e.clientY
+    } : null);
+  }, [selection]);
+
+  const handleDesktopMouseUp = useCallback(() => {
+    setSelection(null);
+  }, []);
+
+  useEffect(() => {
+    if (selection?.active) {
+      window.addEventListener('mousemove', handleDesktopMouseMove);
+      window.addEventListener('mouseup', handleDesktopMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleDesktopMouseMove);
+        window.removeEventListener('mouseup', handleDesktopMouseUp);
+      };
+    }
+  }, [selection?.active, handleDesktopMouseMove, handleDesktopMouseUp]);
+
   const handleUpload = useCallback(async (file: File) => {
     await addFile(file);
   }, [addFile]);
@@ -351,22 +520,14 @@ export default function App() {
   }, []);
 
   const desktopContextMenu: ContextMenuItem[] = [
-    { label: 'Abrir Terminal', icon: <Terminal size={14} />, onClick: () => desktopIcons.find(i => i.id === 'terminal')?.onClick() },
+    { label: 'Abrir Terminal', icon: <Terminal size={14} />, onClick: () => icons.find((i: DesktopIcon) => i.id === 'terminal')?.onClick() },
     { label: 'Novo Arquivo', icon: <FileCode size={14} />, onClick: () => console.log('Novo arquivo') },
     { separator: true },
     { label: 'Atualizar', icon: <RefreshCw size={14} />, onClick: () => window.location.reload() },
     { label: 'Alterar Wallpaper', icon: <ImageIcon size={14} />, onClick: () => console.log('Wallpaper alteration') },
     { separator: true },
-    { label: 'Configurações', icon: <Settings size={14} />, onClick: () => desktopIcons.find(i => i.id === 'settings')?.onClick() },
+    { label: 'Configurações', icon: <Settings size={14} />, onClick: () => icons.find((i: DesktopIcon) => i.id === 'settings')?.onClick() },
     { label: 'Sobre o Trymon OS', icon: <Info size={14} />, onClick: () => alert('Trymon OS v1.0.0\nRunning on WASM/Rust Kernel') },
-  ];
-
-  const desktopIcons: DesktopIcon[] = [
-    { id: 'terminal', label: 'Terminal', icon: <Terminal size={32} />, onClick: () => openWindow('terminal', 'Terminal', <Terminal size={16} />, <TerminalWindow shell={shell} />) },
-    { id: 'files', label: 'Arquivos', icon: <FolderOpen size={32} />, onClick: () => openWindow('files', 'Gerenciador de Arquivos', <FolderOpen size={16} />, <FilesWindow files={files} onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} />) },
-    { id: 'binaries', label: 'Binários', icon: <FileCode size={32} />, onClick: () => openWindow('binaries', 'Gerenciador de Binários', <FileCode size={16} />, <BinariesWindow files={files} onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} onExecute={async (f) => { await mountBinary(f); executeBinary(f, { captureOutput: true }); }} />) },
-    { id: 'settings', label: 'Configurações', icon: <Settings size={32} />, onClick: () => openWindow('settings', 'Configurações do Sistema', <Settings size={16} />, <SettingsWindow />) },
-    { id: 'monitor', label: 'Monitor', icon: <Activity size={32} />, onClick: () => openWindow('monitor', 'Monitor do Sistema', <Activity size={16} />, <MonitorWindow state={emulatorState} />) },
   ];
 
   return (
@@ -377,15 +538,37 @@ export default function App() {
         ref={desktopRef} 
         style={{ background: wallpaper, display: booted ? 'block' : 'none' }}
         onContextMenu={(e) => handleContextMenu(e, desktopContextMenu)}
+        onMouseDown={handleDesktopMouseDown}
         onClick={() => setContextMenu(null)}
       >
+      {/* Selection Box */}
+      {selection && selection.active && (
+        <div 
+          className="selection-box"
+          style={{
+            left: Math.min(selection.startX, selection.endX),
+            top: Math.min(selection.startY, selection.endY),
+            width: Math.abs(selection.startX - selection.endX),
+            height: Math.abs(selection.startY - selection.endY)
+          }}
+        />
+      )}
+
       {/* Desktop Icons */}
       <div className="desktop-icons">
-        {desktopIcons.map(icon => (
+        {icons.map(icon => (
           <div 
             key={icon.id} 
-            className="desktop-icon" 
-            onClick={icon.onClick}
+            className={`desktop-icon ${draggingIconId === icon.id ? 'dragging' : ''}`}
+            style={{ 
+              left: `${icon.x}px`, 
+              top: `${icon.y}px` 
+            }}
+            onClick={() => {
+              if (iconDraggedRef.current) return;
+              icon.onClick();
+            }}
+            onMouseDown={(e) => handleIconMouseDown(e, icon.id)}
             onContextMenu={(e) => handleContextMenu(e, [
               { label: `Abrir ${icon.label}`, icon: icon.icon, onClick: icon.onClick },
               { separator: true },
@@ -463,9 +646,12 @@ export default function App() {
 
       {/* Taskbar */}
       <div className="taskbar">
-        <button className="start-button" onClick={() => setStartMenuOpen(!startMenuOpen)}>
+        <button 
+          className={`start-button ${startMenuOpen ? 'active' : ''}`} 
+          onClick={() => setStartMenuOpen(!startMenuOpen)}
+        >
           <div className="start-icon">
-            <Cpu size={20} />
+            <TrymonLogo size={24} glow={false} />
           </div>
           <span>Iniciar</span>
         </button>
@@ -502,23 +688,84 @@ export default function App() {
 
       {/* Start Menu */}
       {startMenuOpen && (
-        <div className="start-menu">
-          <div className="start-menu-header">
-            <Cpu size={24} />
-            <span>TRYMON</span>
-          </div>
-          <div className="start-menu-items">
-            {desktopIcons.map(icon => (
-              <button key={icon.id} className="menu-item" onClick={() => { icon.onClick(); setStartMenuOpen(false); }}>
-                {icon.icon}
-                <span>{icon.label}</span>
+        <div className="start-menu-premium">
+          <div className="start-menu-side">
+            <div className="user-profile">
+              <div className="user-avatar">
+                <User size={20} />
+              </div>
+              <div className="user-info">
+                <span className="user-name">Root User</span>
+                <span className="user-status">Online</span>
+              </div>
+            </div>
+            
+            <div className="side-actions">
+              <button className="side-btn" onClick={() => openWindow('settings', 'Configurações', <Settings size={16} />, <SettingsWindow />)} title="Configurações">
+                <Settings size={18} />
               </button>
-            ))}
+              <button className="side-btn" onClick={() => openWindow('files', 'Pastas', <FolderOpen size={16} />, <FilesWindow files={files} onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} />)} title="Arquivos">
+                <FolderOpen size={18} />
+              </button>
+              <div className="spacer" />
+              <button className="side-btn power-btn" onClick={() => setStartMenuOpen(false)}>
+                <Power size={18} />
+              </button>
+            </div>
           </div>
-          <div className="start-menu-footer">
-            <button className={`power-btn ${emulatorState.isRunning ? 'running' : ''}`} onClick={emulatorState.isRunning ? handleStopEmulator : handleStartEmulator}>
-              {emulatorState.isRunning ? 'Desligar Sistema' : 'Ligar Sistema'}
-            </button>
+
+          <div className="start-menu-main">
+            <div className="search-container">
+              <Search size={16} className="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Pesquisar aplicativos e documentos..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="start-sections">
+              <div className="section">
+                <h3>Fixados</h3>
+                <div className="apps-grid">
+                  {icons.filter((i: DesktopIcon) => i.label.toLowerCase().includes(searchQuery.toLowerCase())).map((icon: DesktopIcon) => (
+                    <div key={icon.id} className="app-item" onClick={() => { icon.onClick(); setStartMenuOpen(false); }}>
+                      <div className="app-icon">{icon.icon}</div>
+                      <span className="app-label">{icon.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {installedApps.length > 0 && (
+                <div className="section">
+                  <h3>Aplicativos Trymon</h3>
+                  <div className="apps-list">
+                    {installedApps.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase())).map(app => (
+                      <div key={app.id} className="app-list-item" onClick={async () => { await runApp(app.id); setStartMenuOpen(false); }}>
+                        <div className="app-list-icon">
+                          <TrymonLogo size={20} glow={false} />
+                        </div>
+                        <div className="app-list-info">
+                          <span className="name">{app.name}</span>
+                          <span className="version">v{app.version}</span>
+                        </div>
+                        <ChevronRight size={14} className="arrow" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="start-footer">
+              <div className="power-option" onClick={emulatorState.isRunning ? handleStopEmulator : handleStartEmulator}>
+                <div className={`status-dot ${emulatorState.isRunning ? 'running' : ''}`} />
+                <span>{emulatorState.isRunning ? 'Desligar Trymon AI Engine' : 'Ligar Trymon AI Engine'}</span>
+              </div>
+            </div>
           </div>
         </div>
       )}

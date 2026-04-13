@@ -263,6 +263,11 @@ impl VirtualFileSystem {
         self.files.get(path)
     }
 
+    /// Get file info (mutable)
+    pub fn get_file_mut(&mut self, path: &str) -> Option<&mut VirtualFile> {
+        self.files.get_mut(path)
+    }
+
     /// Delete a file or directory
     pub fn delete(&mut self, path: &str) -> Result<()> {
         if self.files.remove(path).is_some() {

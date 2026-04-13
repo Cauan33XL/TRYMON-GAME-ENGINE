@@ -16,12 +16,14 @@ mod process_manager;
 mod shell;
 mod kernel_api;
 mod error;
+mod trymon_engine;
 
 pub use binary_loader::*;
 pub use virtual_fs::*;
 pub use process_manager::*;
 pub use kernel_api::*;
 pub use error::*;
+pub use trymon_engine::*;
 
 // Global kernel state
 static KERNEL: Lazy<Mutex<Option<TrymonKernel>>> = Lazy::new(|| Mutex::new(None));
@@ -36,6 +38,8 @@ pub struct TrymonKernel {
     pub processes: ProcessManager,
     /// Interactive shell
     pub shell: shell::Shell,
+    /// Trymon execution engine
+    pub engine: TrymonEngine,
     /// Kernel configuration
     pub config: KernelConfig,
     /// Kernel uptime (seconds)
@@ -80,6 +84,7 @@ impl TrymonKernel {
             vfs: VirtualFileSystem::new(),
             processes: ProcessManager::new(config.max_processes),
             shell: shell::Shell::new(),
+            engine: TrymonEngine::new(),
             config,
             uptime: 0,
         }
@@ -92,6 +97,7 @@ impl TrymonKernel {
         self.loader.init()?;
         self.vfs.init()?;
         self.processes.init()?;
+        self.engine.init(&mut self.vfs)?;
         
         log::info!("TRYMON Kernel ready!");
         Ok(())
@@ -215,4 +221,39 @@ struct KernelStatus {
     running_processes: usize,
     memory_usage: u64,
     config: KernelConfig,
+}
+
+/// Install a loaded .trymon package
+#[wasm_bindgen]
+pub fn kernel_trymon_install(binary_id: &str) -> std::result::Result<String, JsValue> {
+    let mut k = KERNEL.lock();
+    let kernel = k.as_mut().ok_or_else(|| JsValue::from_str("Kernel not initialized"))?;
+    
+    kernel.engine.install_package(&mut kernel.vfs, &kernel.loader, binary_id)
+        .map(|info| serde_json::to_string(&info).unwrap_or_default())
+        .map_err(JsValue::from)
+}
+
+/// List all installed Trymon apps
+#[wasm_bindgen]
+pub fn kernel_trymon_list_apps() -> String {
+    let k = KERNEL.lock();
+    match k.as_ref() {
+        Some(kernel) => {
+            let apps = kernel.engine.list_apps();
+            serde_json::to_string(&apps).unwrap_or_default()
+        }
+        None => "[]".to_string()
+    }
+}
+
+/// Run an installed Trymon app
+#[wasm_bindgen]
+pub fn kernel_trymon_run_app(app_id: &str) -> std::result::Result<String, JsValue> {
+    let mut k = KERNEL.lock();
+    let kernel = k.as_mut().ok_or_else(|| JsValue::from_str("Kernel not initialized"))?;
+    
+    kernel.engine.run_app(&mut kernel.processes, &mut kernel.vfs, app_id)
+        .map(|info| serde_json::to_string(&info).unwrap_or_default())
+        .map_err(JsValue::from)
 }

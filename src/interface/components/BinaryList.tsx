@@ -56,13 +56,20 @@ export function BinaryList({ files, onExecute, onStop, onDelete }: BinaryListPro
           <div key={`${file.name}-${index}`} className="binary-card">
             <div className="card-header">
               <div className="file-icon">
-                <FileCode size={24} />
+                {file.metadata?.icon ? (
+                  <img src={file.metadata.icon} alt="icon" className="binary-icon-img" />
+                ) : (
+                  <FileCode size={24} />
+                )}
               </div>
               <div className="file-info">
                 <h4 className="file-name" title={file.name}>{file.name}</h4>
                 <div className="file-meta">
                   <span className="file-size">{formatBytes(file.size)}</span>
                   <span className="file-type">.{file.type}</span>
+                  {file.metadata?.maintainer && (
+                    <span className="file-author">by {file.metadata.maintainer}</span>
+                  )}
                 </div>
               </div>
               <div
@@ -82,6 +89,11 @@ export function BinaryList({ files, onExecute, onStop, onDelete }: BinaryListPro
                 <Clock size={14} />
                 <span>Uploaded {file.uploadedAt.toLocaleTimeString()}</span>
               </div>
+              {file.metadata?.description && (
+                <div className="detail-item description">
+                  <p>{file.metadata.description}</p>
+                </div>
+              )}
             </div>
 
             <div className="card-actions">

@@ -3,7 +3,7 @@
  * Uses the Rust-compiled shell module for bash-like functionality
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 interface ShellWasmState {
   isReady: boolean;
@@ -122,7 +122,7 @@ export function useShellWasm() {
     }
   }, []);
 
-  return {
+  return useMemo(() => ({
     state,
     execute,
     sendInput,
@@ -133,5 +133,5 @@ export function useShellWasm() {
     isReady: state.isReady,
     isLoading: state.isLoading,
     error: state.error
-  };
+  }), [state, execute, sendInput, getOutput, appendOutput, clearOutput, getStatus]);
 }

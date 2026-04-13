@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { V86Emulator, V86State, V86Config, BinaryFile, ExecutionResult } from '../../wasm/v86-emulator';
+import { V86Emulator, V86State, V86Config, BinaryFile, ExecutionResult, detectBinaryType } from '../../wasm/v86-emulator';
 
 export function useEmulator(config: V86Config = {}) {
   const [state, setState] = useState<V86State>({
@@ -76,6 +76,23 @@ export function useEmulator(config: V86Config = {}) {
     emulatorRef.current?.executeBinaryBackground(file);
   }, []);
 
+  const listApps = useCallback(() => {
+    return emulatorRef.current?.listTrymonApps() ?? [];
+  }, []);
+
+  const runApp = useCallback(async (appId: string) => {
+    return await emulatorRef.current?.runTrymonApp(appId) ?? {
+      success: false,
+      output: 'Emulator not initialized',
+      exitCode: -1,
+      duration: 0
+    };
+  }, []);
+
+  const installApp = useCallback(async (binaryId: string) => {
+    return await emulatorRef.current?.installTrymonApp(binaryId) ?? null;
+  }, []);
+
   return {
     state,
     emulator: emulatorRef.current,
@@ -86,7 +103,10 @@ export function useEmulator(config: V86Config = {}) {
     executeCommand,
     mountBinary,
     executeBinary,
-    executeBinaryBackground
+    executeBinaryBackground,
+    listApps,
+    runApp,
+    installApp
   };
 }
 
@@ -115,21 +135,32 @@ export function useBinaryFiles() {
 
   const addFile = useCallback(async (file: File) => {
     const arrayBuffer = await file.arrayBuffer();
-    const ext = file.name.split('.').pop()?.toLowerCase();
+    const data = new Uint8Array(arrayBuffer);
+    
+    const type = detectBinaryType(file.name);
+    let metadata;
 
-    let type: BinaryFile['type'] = 'unknown';
-    if (ext === 'appimage') type = 'appimage';
-    else if (ext === 'deb') type = 'deb';
-    else if (ext === 'rpm') type = 'rpm';
+    if (type === 'trymon') {
+      try {
+        // Parse metadata if it's a Trymon package
+        // Simplified unpacking: Magic(4) + Ver(1) + MetaLen(4) + MetaJSON
+        const metaLen = new Uint32Array(data.buffer, 5, 1)[0];
+        const metaJson = new TextDecoder().decode(data.slice(9, 9 + metaLen));
+        metadata = JSON.parse(metaJson);
+      } catch (err) {
+        console.warn('Failed to parse .trymon metadata:', err);
+      }
+    }
 
     const binaryFile: BinaryFile = {
       id: crypto.randomUUID(),
-      name: file.name,
+      name: metadata?.name || file.name,
       size: file.size,
       type,
       data: arrayBuffer,
+      metadata,
       uploadedAt: new Date(),
-      status: 'pending'
+      status: 'loaded' // Mark as ready immediately since it's in memory
     };
 
     setFiles(prev => [...prev, binaryFile]);
