@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    "paths": {
+      "@wasm/pkg/*": ["./src/wasm/pkg/*"]
+    },
     "target": "ESNext",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -20,5 +23,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "vite-env.d.ts"]
 }

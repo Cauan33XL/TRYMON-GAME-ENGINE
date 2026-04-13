@@ -5,7 +5,11 @@
   "main": "script.js",
   "scripts": {
     "dev": "vite",
+    "server": "npm --prefix server run dev",
+    "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "tsc && vite build",
+    "build:wasm": "wasm-pack build src/kernel-rust --target web --out-dir ../wasm/pkg",
+    "build:all": "npm run build:wasm && npm run build",
     "preview": "vite preview"
   },
   "keywords": [
@@ -24,6 +28,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.1.2",
     "typescript": "^6.0.2",
     "vite": "^8.0.3"
   },

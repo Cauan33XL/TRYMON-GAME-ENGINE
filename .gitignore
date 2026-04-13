@@ -137,3 +137,30 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# Rust & WASM Build Artifacts
+src/kernel-rust/target/
+src/wasm/pkg/
+
+node_modules/
+# Linux Kernel Source & Binaries
+kernel/
+src/kernel/
+src/kernel/linux-6.19.12/
+public/v86/bzimage
+public/v86/initrd.img
+public/v86/*.img
+public/v86/bzimage*
+
+# Server & Persistence
+server/uploads/binaries/*
+!server/uploads/binaries/.gitkeep
+*.sqlite
+*.sqlite-journal
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Private Reference Sources
+reference-source-private/
