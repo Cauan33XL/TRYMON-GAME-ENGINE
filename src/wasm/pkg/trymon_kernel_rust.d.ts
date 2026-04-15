@@ -211,6 +211,51 @@ export function kernel_trymon_list_apps(): string;
  */
 export function kernel_trymon_run_app(app_id: string): string;
 
+/**
+ * Execute a .trymon package directly (Execute mode)
+ */
+export function trymon_execute_package(binary_id: string): string;
+
+/**
+ * Install a TVM bytecode package (Install mode)
+ */
+export function trymon_install_tvm(package_id: string, name: string): string;
+
+/**
+ * Compile ELF binary to TVM bytecode
+ */
+export function tvm_compile_elf(elf_data: Uint8Array, name: string): string;
+
+/**
+ * Execute a loaded TVM package
+ */
+export function tvm_execute(package_id: string): string;
+
+/**
+ * Export a loaded TVM package as .trymon binary data (returns base64)
+ */
+export function tvm_export_package(package_id: string): Uint8Array;
+
+/**
+ * Initialize the TVM subsystem
+ */
+export function tvm_init(): void;
+
+/**
+ * Check if TVM is initialized
+ */
+export function tvm_is_initialized(): boolean;
+
+/**
+ * Load a TVM bytecode package (.trymon format v2)
+ */
+export function tvm_load(data: Uint8Array): string;
+
+/**
+ * Get TVM sandbox status
+ */
+export function tvm_sandbox_status(): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -253,6 +298,15 @@ export interface InitOutput {
     readonly kernel_trymon_install: (a: number, b: number) => [number, number, number, number];
     readonly kernel_trymon_list_apps: () => [number, number];
     readonly kernel_trymon_run_app: (a: number, b: number) => [number, number, number, number];
+    readonly trymon_execute_package: (a: number, b: number) => [number, number, number, number];
+    readonly trymon_install_tvm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly tvm_compile_elf: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly tvm_execute: (a: number, b: number) => [number, number, number, number];
+    readonly tvm_export_package: (a: number, b: number) => [number, number, number, number];
+    readonly tvm_init: () => [number, number];
+    readonly tvm_is_initialized: () => number;
+    readonly tvm_load: (a: number, b: number) => [number, number, number, number];
+    readonly tvm_sandbox_status: () => [number, number];
     readonly kernel_stop_process: (a: number, b: number) => [number, number];
     readonly kernel_get_output: (a: number, b: number) => [number, number];
     readonly kernel_send_input: (a: number, b: number, c: number, d: number) => [number, number];

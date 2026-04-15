@@ -51,6 +51,8 @@ export function useKernelState() {
     processes: state.running_processes,
     memoryUsage: state.memory_usage_bytes,
     vfsStats: state.filesystem_stats,
+    tvm_error: state.tvm_error,
+    tvm_ready: state.tvm_ready,
   }), [ready, state]);
 }
 
@@ -205,4 +207,12 @@ export function useVFS() {
     stats: vfsStats,
     saveState,
   }), [vfsStats, saveState]);
+}
+
+// ============================================================
+// TVM hooks
+// ============================================================
+
+export function getTVMSandboxStatus() {
+  return kernel.getTVMSandboxStatus();
 }

@@ -29,7 +29,7 @@ import { saveConfig, loadConfig } from './services/persistence';
 import { getTrashCount } from './services/trashService';
 import * as kernel from './services/kernelService';
 import { Globe, Terminal, FolderOpen, Settings, Activity, FileCode, X, Minus, Square, Maximize2, Trash2, Plus, RefreshCw, Info, Image as ImageIcon, Search, Power, User, Package, FileText, FolderPlus, ChevronRight, Share2 } from 'lucide-react';
-import type { BinaryInfo } from './services/kernelService';
+
 
 // App Props no longer used as kernel initializes internally
 
@@ -123,17 +123,9 @@ export default function App() {
 
   const desktopRef = useRef<HTMLDivElement>(null);
 
-  // Emulator (v86 terminal renderer only — kernel manages everything else)
-  const {
-    state: emulatorState,
-    initialize: initEmulator,
-    start: startEmulator,
-    stop: stopEmulator,
-  } = useEmulator({
-    memorySize: 128,
-    videoMemorySize: 8,
-    autostart: false
-  });
+  // Emulator state for UI indicators only (v86 terminal - optional)
+  const emulatorHook = useEmulator({});
+  const emulatorState = emulatorHook.state;
 
   // Cursor broadcasting
   useEffect(() => {
@@ -150,28 +142,19 @@ export default function App() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Binary upload / delete — delegates to kernel
+  // Binary upload — delegates to kernel (used by FilesApp)
   const handleUpload = useCallback(async (file: File) => {
-    await binaries.loadBinary(file);
-    // Auto-save VFS after upload
+    const data = new Uint8Array(await file.arrayBuffer());
+    kernel.loadBinary(file.name, data);
     setTimeout(() => kernel.saveVFSState(), 500);
-  }, [binaries]);
+  }, []);
 
+  // Binary delete — delegates to kernel
   const handleDelete = useCallback((binaryId: string) => {
     binaries.removeBinary(binaryId);
     setTimeout(() => kernel.saveVFSState(), 100);
   }, [binaries]);
 
-  const handleInstall = useCallback(async (binary: BinaryInfo) => {
-    if (binary.format !== 'Trymon') return;
-
-    const appInfo = trymonApps.installApp(binary.id);
-    if (appInfo) {
-      console.log(`App installed: ${appInfo.id}`);
-      await kernel.saveVFSState();
-      // Icons will refresh via useEffect
-    }
-  }, [trymonApps]);
 
   // Desktop icons state
   const [icons, setIcons] = useState<DesktopIcon[]>([]);
@@ -276,7 +259,7 @@ export default function App() {
   const AppRegistry: Record<string, { title: string; icon: any; content: React.ReactNode }> = {
     'terminal': { title: 'Terminal', icon: <Terminal size={16} />, content: <TerminalApp kernelShell={kernelShell} /> },
     'files': { title: 'Gerenciador de Arquivos', icon: <FolderOpen size={16} />, content: <FilesApp onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} /> },
-    'binaries': { title: 'Gerenciador de Binários', icon: <FileCode size={16} />, content: <BinariesApp onUpload={handleUpload} onDelete={handleDelete} onContextMenu={handleContextMenu} onInstall={handleInstall} /> },
+    'binaries': { title: 'Gerenciador de Binários', icon: <FileCode size={16} />, content: <BinariesApp onDelete={handleDelete} onContextMenu={handleContextMenu} /> },
     'settings': { title: 'Configurações do Sistema', icon: <Settings size={16} />, content: <SettingsApp /> },
     'monitor': { title: 'Monitor do Sistema', icon: <Activity size={16} />, content: <MonitorApp kernelState={kernelState.state} emulatorState={emulatorState} /> },
     'browser': { title: 'Trymon Browser', icon: <Globe size={16} />, content: <BrowserApp /> },
@@ -569,15 +552,8 @@ export default function App() {
     }
   }, [resizingWindow, handleResizeMove, handleResizeEnd]);
 
-  // Kernel is already running — this just starts the v86 terminal emulator
-  const handleStartEmulator = useCallback(async () => {
-    await initEmulator();
-    startEmulator();
-  }, [initEmulator, startEmulator]);
-
-  const handleStopEmulator = useCallback(() => {
-    stopEmulator();
-  }, [stopEmulator]);
+  // Kernel is already running — v86 terminal is optional
+  // TVM is now auto-initialized at boot
 
 
 
@@ -1103,9 +1079,9 @@ export default function App() {
               </div>
 
               <div className="start-footer">
-                <div className="power-option" onClick={emulatorState.isRunning ? handleStopEmulator : handleStartEmulator}>
-                  <div className={`status-dot ${emulatorState.isRunning ? 'running' : ''}`} />
-                  <span>{emulatorState.isRunning ? 'Desligar Trymon AI Engine' : 'Ligar Trymon AI Engine'}</span>
+                <div className="power-option">
+                  <div className={`status-dot ${kernelState.tvm_error ? 'error' : (kernelState.tvm_ready ? 'running' : '')}`} />
+                  <span>{kernelState.tvm_error ? `TVM Erro` : (kernelState.tvm_ready ? 'TVM Ativo' : 'TVM Carregando...')}</span>
                 </div>
               </div>
             </div>

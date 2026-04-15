@@ -12,9 +12,15 @@ import { Bell, X, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-r
 
 export const SystemClock = memo(function SystemClock() {
   const [time, setTime] = useState(new Date());
+  const [isOpen, setIsOpen] = useState(false);
+  const [uptime, setUptime] = useState(0);
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
+    const start = Date.now();
+    const timer = setInterval(() => {
+      setTime(new Date());
+      setUptime(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -34,11 +40,122 @@ export const SystemClock = memo(function SystemClock() {
   }, [time]);
 
   return (
-    <div className="system-clock clock" title={dateStr}>
-      <span className="clock-time">{timeStr}</span>
+    <div className="system-clock-wrapper">
+      <div 
+        className={`system-clock clock ${isOpen ? 'active' : ''}`} 
+        title={dateStr}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="clock-time">{timeStr}</span>
+      </div>
+      
+      {isOpen && (
+        <ClockDashboard 
+          time={time} 
+          uptime={uptime} 
+          onClose={() => setIsOpen(false)} 
+        />
+      )}
     </div>
   );
 });
+
+// ============================================================
+// Clock Dashboard - Detailed view with Analog Clock
+// ============================================================
+
+function ClockDashboard({ time, uptime, onClose }: { time: Date; uptime: number; onClose: () => void }) {
+  const hours = time.getHours();
+  const minutes = time.getMinutes();
+  const seconds = time.getSeconds();
+
+  // Analog clock rotations
+  const secondDeg = seconds * 6;
+  const minuteDeg = minutes * 6 + seconds * 0.1;
+  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
+
+  const fullDateStr = time.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const formatUptime = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${h}h ${m}m ${sec}s`;
+  };
+
+  return (
+    <div className="clock-panel">
+      <div className="clock-panel-header">
+        <h3>Calendário e Hora</h3>
+        <button className="close-panel-btn" onClick={onClose}>
+          <X size={14} />
+        </button>
+      </div>
+      
+      <div className="clock-panel-body">
+        <div className="analog-clock-container">
+          <svg className="analog-clock" viewBox="0 0 100 100">
+            {/* Clock Face */}
+            <circle className="clock-face" cx="50" cy="50" r="48" />
+            
+            {/* Hour Markers */}
+            {[...Array(12)].map((_, i) => (
+              <line
+                key={i}
+                className="hour-marker"
+                x1="50" y1="10" x2="50" y2="15"
+                transform={`rotate(${i * 30} 50 50)`}
+              />
+            ))}
+            
+            {/* Hands */}
+            <line 
+              className="hand hour-hand" 
+              x1="50" y1="50" x2="50" y2="28" 
+              transform={`rotate(${hourDeg} 50 50)`} 
+            />
+            <line 
+              className="hand minute-hand" 
+              x1="50" y1="50" x2="50" y2="18" 
+              transform={`rotate(${minuteDeg} 50 50)`} 
+            />
+            <line 
+              className="hand second-hand" 
+              x1="50" y1="50" x2="50" y2="12" 
+              transform={`rotate(${secondDeg} 50 50)`} 
+            />
+            <circle className="center-dot" cx="50" cy="50" r="2" />
+          </svg>
+        </div>
+
+        <div className="clock-details">
+          <div className="digital-time">
+            {time.toLocaleTimeString('pt-BR')}
+          </div>
+          <div className="full-date">
+            {fullDateStr}
+          </div>
+          
+          <div className="system-info">
+            <div className="info-item">
+              <span className="info-label">Uptime do Sistema</span>
+              <span className="info-value">{formatUptime(uptime)}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Fuso Horário</span>
+              <span className="info-value">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ============================================================
 // Notification System

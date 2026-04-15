@@ -1,14 +1,14 @@
 //! Binary Loader Module
-//! 
+//!
 //! Handles parsing and loading of Linux binary formats:
 //! - .AppImage (SquashFS embedded in ELF)
 //! - .deb (Debian package - ar archive)
 //! - .rpm (Red Hat Package Manager - cpio archive)
 
+use crate::error::{KernelError, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use serde::{Serialize, Deserialize};
-use crate::error::{Result, KernelError};
 
 /// Supported binary formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,11 +167,14 @@ impl BinaryLoader {
         info.status = BinaryStatus::Ready;
 
         // Store binary
-        self.binaries.insert(id.clone(), BinaryData {
-            data: data.to_vec(),
-            info: info.clone(),
-            executable,
-        });
+        self.binaries.insert(
+            id.clone(),
+            BinaryData {
+                data: data.to_vec(),
+                info: info.clone(),
+                executable,
+            },
+        );
 
         log::info!("Binary loaded successfully: {} (id: {})", name, id);
         Ok(info)
@@ -208,7 +211,11 @@ impl BinaryLoader {
 
     /// Parse AppImage format
     /// AppImage is an ELF executable with embedded SquashFS
-    fn parse_appimage(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+    fn parse_appimage(
+        &self,
+        data: &[u8],
+        info: &mut BinaryInfo,
+    ) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
         log::info!("Parsing AppImage: {}", info.name);
 
         // Verify ELF magic bytes
@@ -217,8 +224,9 @@ impl BinaryLoader {
         }
 
         // Find SquashFS magic bytes (hsqs)
-        let squashfs_offset = Self::find_magic(data, b"hsqs")
-            .ok_or_else(|| KernelError::ParseError("SquashFS filesystem not found in AppImage".into()))?;
+        let squashfs_offset = Self::find_magic(data, b"hsqs").ok_or_else(|| {
+            KernelError::ParseError("SquashFS filesystem not found in AppImage".into())
+        })?;
 
         log::info!("SquashFS found at offset: {}", squashfs_offset);
 
@@ -232,7 +240,11 @@ impl BinaryLoader {
 
     /// Parse Debian .deb package
     /// .deb is an ar archive containing control.tar and data.tar
-    fn parse_deb(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+    fn parse_deb(
+        &self,
+        data: &[u8],
+        info: &mut BinaryInfo,
+    ) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
         log::info!("Parsing DEB package: {}", info.name);
 
         // Verify ar magic bytes
@@ -279,7 +291,11 @@ impl BinaryLoader {
 
     /// Parse RPM package
     /// RPM has a complex header + cpio archive structure
-    fn parse_rpm(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+    fn parse_rpm(
+        &self,
+        data: &[u8],
+        info: &mut BinaryInfo,
+    ) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
         log::info!("Parsing RPM package: {}", info.name);
 
         // Verify RPM magic bytes (edabeedb)
@@ -310,7 +326,11 @@ impl BinaryLoader {
     }
 
     /// Parse generic ELF executable
-    fn parse_elf(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+    fn parse_elf(
+        &self,
+        data: &[u8],
+        info: &mut BinaryInfo,
+    ) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
         info.entry_point = Some(format!("/usr/bin/{}", info.name));
         Ok((Some(data.to_vec()), None))
     }
@@ -318,53 +338,74 @@ impl BinaryLoader {
     /// Parse Trymon package format (.trymon)
     /// Structure:
     /// - Magic: "TRYM" (4 bytes)
-    /// - Version: 0x01 (1 byte)
+    /// - Version: 0x01 (v1 legacy) or 0x02 (v2 TVM)
+    /// - Flags: u16
     /// - Meta Length: u32 (4 bytes, LE)
     /// - Metadata JSON
     /// - Binary Length: u32 (4 bytes, LE)
-    /// - Binary Data
-    fn parse_trymon(&self, data: &[u8], info: &mut BinaryInfo) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
+    /// - Binary Data (ELF for v1, TVM bytecode for v2)
+    fn parse_trymon(
+        &self,
+        data: &[u8],
+        info: &mut BinaryInfo,
+    ) -> Result<(Option<Vec<u8>>, Option<PackageMetadata>)> {
         log::info!("Parsing Trymon package: {}", info.name);
 
         if data.len() < 13 || &data[0..4] != b"TRYM" {
-            return Err(KernelError::InvalidBinary("Not a valid Trymon package".into()));
+            return Err(KernelError::InvalidBinary(
+                "Not a valid Trymon package".into(),
+            ));
         }
 
         let version = data[4];
-        if version != 1 {
-            return Err(KernelError::UnsupportedFormat(format!("Trymon package version {} not supported", version)));
+        if version != 1 && version != 2 {
+            return Err(KernelError::UnsupportedFormat(format!(
+                "Trymon package version {} not supported (supported: 1, 2)",
+                version
+            )));
         }
 
+        // Flags (v2) or skip for v1
+        let meta_offset = if version == 2 { 7 } else { 5 };
+
         // Meta Length
-        let meta_len = u32::from_le_bytes(data[5..9].try_into().unwrap()) as usize;
-        if data.len() < 9 + meta_len + 4 {
-            return Err(KernelError::ParseError("Trymon package truncated (metadata)".into()));
+        let meta_len =
+            u32::from_le_bytes(data[meta_offset..meta_offset + 4].try_into().unwrap()) as usize;
+        if data.len() < meta_offset + 4 + meta_len + 4 {
+            return Err(KernelError::ParseError(
+                "Trymon package truncated (metadata)".into(),
+            ));
         }
 
         // Metadata JSON
-        let meta_json = std::str::from_utf8(&data[9..9+meta_len])
+        let meta_json = std::str::from_utf8(&data[9..9 + meta_len])
             .map_err(|e| KernelError::ParseError(format!("Invalid metadata UTF-8: {}", e)))?;
-        
+
         let metadata: PackageMetadata = serde_json::from_str(meta_json)
             .map_err(|e| KernelError::ParseError(format!("Invalid metadata JSON: {}", e)))?;
 
         log::info!("Trymon metadata loaded: {:?}", metadata.name);
 
         // Binary Length
-        let bin_offset = 9 + meta_len;
-        let bin_len = u32::from_le_bytes(data[bin_offset..bin_offset+4].try_into().unwrap()) as usize;
-        
+        let version = data[4];
+        let meta_offset = if version == 2 { 7 } else { 5 };
+        let bin_offset = meta_offset + 4 + meta_len;
+        let bin_len =
+            u32::from_le_bytes(data[bin_offset..bin_offset + 4].try_into().unwrap()) as usize;
+
         if data.len() < bin_offset + 4 + bin_len {
-            return Err(KernelError::ParseError("Trymon package truncated (binary)".into()));
+            return Err(KernelError::ParseError(
+                "Trymon package truncated (binary)".into(),
+            ));
         }
 
-        let bin_data = data[bin_offset+4..bin_offset+4+bin_len].to_vec();
+        let bin_data = data[bin_offset + 4..bin_offset + 4 + bin_len].to_vec();
 
         // Update info with metadata
         if let Some(ref name) = metadata.name {
             info.name = name.clone();
         }
-        
+
         if let Some(ref entry) = metadata.entry {
             info.entry_point = Some(entry.clone());
         } else {
@@ -423,7 +464,6 @@ impl BinaryLoader {
             return None;
         }
 
-        data.windows(magic.len())
-            .position(|window| window == magic)
+        data.windows(magic.len()).position(|window| window == magic)
     }
 }

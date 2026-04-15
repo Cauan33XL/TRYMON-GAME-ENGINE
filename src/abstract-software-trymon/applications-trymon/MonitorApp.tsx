@@ -1,4 +1,5 @@
 import type { V86State } from '../../wasm/v86-emulator';
+import { useTrymonApps, getTVMSandboxStatus } from '../../interface/hooks/useKernelState';
 
 export default function MonitorApp({ kernelState, emulatorState }: { kernelState: any; emulatorState: V86State }) {
   const cpuUsage = emulatorState.cpuUsage || 0;
@@ -6,6 +7,13 @@ export default function MonitorApp({ kernelState, emulatorState }: { kernelState
   const uptime = kernelState.uptime || emulatorState.uptime || 0;
   const isRunning = emulatorState.isRunning;
   const kernelReady = kernelState.initialized;
+  
+  // Trymon Apps info
+  const trymonApps = useTrymonApps();
+  const installedApps = trymonApps.apps.length;
+
+  // Get TVM stats
+  const tvmStats = getTVMSandboxStatus();
 
   return (
     <div className="monitor-window">
@@ -61,6 +69,18 @@ export default function MonitorApp({ kernelState, emulatorState }: { kernelState
               <span>Kernel Rust</span>
               <span className="status-text">{kernelReady ? 'Online' : 'Offline'}</span>
             </div>
+            <div className={`status-item ${installedApps > 0 ? 'running' : 'stopped'}`}>
+              <span className="status-dot" />
+              <span>TVM Engine</span>
+              <span className="status-text">{installedApps > 0 ? `${installedApps} apps` : 'Pronto'}</span>
+            </div>
+            {tvmStats && (
+              <div className="status-item running">
+                <span className="status-dot" />
+                <span>TVM Sandbox</span>
+                <span className="status-text">Ativo</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

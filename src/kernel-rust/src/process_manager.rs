@@ -3,12 +3,12 @@
 //! Handles execution, monitoring, and management of binary processes.
 //! Simulates process forking, execution, and signal handling in WASM.
 
-use std::collections::HashMap;
-use chrono::Utc;
-use serde::{Serialize, Deserialize};
-use crate::error::{Result, KernelError};
-use crate::binary_loader::{BinaryLoader, BinaryInfo};
+use crate::binary_loader::{BinaryInfo, BinaryLoader};
+use crate::error::{KernelError, Result};
 use crate::virtual_fs::VirtualFileSystem;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// POSIX Signals
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +59,9 @@ impl Signal {
     /// Get the default action for a signal
     pub fn default_action(&self) -> SignalAction {
         match self {
-            Signal::SIGTERM | Signal::SIGINT | Signal::SIGHUP | Signal::SIGQUIT => SignalAction::Terminate,
+            Signal::SIGTERM | Signal::SIGINT | Signal::SIGHUP | Signal::SIGQUIT => {
+                SignalAction::Terminate
+            }
             Signal::SIGSTOP => SignalAction::Stop,
             Signal::SIGCONT => SignalAction::Continue,
             _ => SignalAction::Ignore,
@@ -188,7 +190,7 @@ impl ProcessManager {
         // Create init process (PID 1)
         let init_pid = "1".to_string();
         let now = Utc::now().timestamp();
-        
+
         let init = ProcessInfo {
             pid: init_pid.clone(),
             name: "init".to_string(),
@@ -204,7 +206,10 @@ impl ProcessManager {
             cwd: "/".to_string(),
             env: {
                 let mut env = HashMap::new();
-                env.insert("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
+                env.insert(
+                    "PATH".to_string(),
+                    "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string(),
+                );
                 env.insert("HOME".to_string(), "/root".to_string());
                 env.insert("TERM".to_string(), "xterm-256color".to_string());
                 env.insert("SHELL".to_string(), "/bin/bash".to_string());
@@ -222,7 +227,7 @@ impl ProcessManager {
 
         self.processes.insert(init_pid, init);
         self.initialized = true;
-        
+
         log::info!("ProcessManager ready (init process created)");
         Ok(())
     }
@@ -232,22 +237,26 @@ impl ProcessManager {
         &mut self,
         loader: &BinaryLoader,
         vfs: &mut VirtualFileSystem,
-        binary_id: &str
+        binary_id: &str,
     ) -> Result<ProcessInfo> {
         if !self.initialized {
-            return Err(KernelError::ExecutionError("ProcessManager not initialized".into()));
+            return Err(KernelError::ExecutionError(
+                "ProcessManager not initialized".into(),
+            ));
         }
 
         // Check process limit
         let running_count = self.running_count();
         if running_count >= self.max_processes as usize {
-            return Err(KernelError::ExecutionError(
-                format!("Maximum process limit reached ({})", self.max_processes)
-            ));
+            return Err(KernelError::ExecutionError(format!(
+                "Maximum process limit reached ({})",
+                self.max_processes
+            )));
         }
 
         // Get binary info
-        let binary = loader.get_binary_info(binary_id)
+        let binary = loader
+            .get_binary_info(binary_id)
             .ok_or_else(|| KernelError::InvalidBinary(binary_id.to_string()))?;
 
         log::info!("Executing binary: {} (id: {})", binary.name, binary_id);
@@ -287,7 +296,7 @@ impl ProcessManager {
         if let Some(binary_data) = loader.get_binary(binary_id) {
             let extract_path = format!("/mnt/binary/{}", binary.name);
             vfs.extract_binary(&extract_path, &binary_data.data)?;
-            
+
             // Make executable
             if let Some(file) = vfs.get_file(&extract_path) {
                 let mut updated = file.clone();
@@ -305,7 +314,7 @@ impl ProcessManager {
         // Mark as running
         let mut final_process = process;
         final_process.state = ProcessState::Running;
-        
+
         // Simulate initial resource usage
         final_process.memory_usage = (binary.size as u64).min(50 * 1024 * 1024); // Cap at 50MB
         final_process.cpu_usage = 2.5;
@@ -325,28 +334,35 @@ impl ProcessManager {
         extra_env: HashMap<String, String>,
     ) -> Result<ProcessInfo> {
         if !self.initialized {
-            return Err(KernelError::ExecutionError("ProcessManager not initialized".into()));
+            return Err(KernelError::ExecutionError(
+                "ProcessManager not initialized".into(),
+            ));
         }
 
         // Check process limit
         if self.running_count() >= self.max_processes as usize {
-            return Err(KernelError::ExecutionError(
-                format!("Maximum process limit reached ({})", self.max_processes)
-            ));
+            return Err(KernelError::ExecutionError(format!(
+                "Maximum process limit reached ({})",
+                self.max_processes
+            )));
         }
 
-        let file = vfs.get_file(path)
-            .ok_or_else(|| KernelError::FileSystemError(format!("Binary not found in VFS: {}", path)))?;
+        let file = vfs.get_file(path).ok_or_else(|| {
+            KernelError::FileSystemError(format!("Binary not found in VFS: {}", path))
+        })?;
 
         if !file.executable {
-            return Err(KernelError::ExecutionError(format!("File is not executable: {}", path)));
+            return Err(KernelError::ExecutionError(format!(
+                "File is not executable: {}",
+                path
+            )));
         }
 
         let pid = format!("{}", self.process_counter);
         self.process_counter += 1;
 
         let now = Utc::now().timestamp();
-        
+
         // Setup environment
         let mut env = self.get_base_env();
         for (k, v) in extra_env {
@@ -378,7 +394,7 @@ impl ProcessManager {
         };
 
         self.processes.insert(pid.clone(), process.clone());
-        
+
         // Add to init's children
         if let Some(init) = self.processes.get_mut("1") {
             init.children.push(pid.clone());
@@ -390,7 +406,9 @@ impl ProcessManager {
 
     /// Stop a running process
     pub fn stop_process(&mut self, pid: &str) -> Result<()> {
-        let process = self.processes.get_mut(pid)
+        let process = self
+            .processes
+            .get_mut(pid)
             .ok_or_else(|| KernelError::ProcessNotFound(pid.to_string()))?;
 
         match process.state {
@@ -399,7 +417,7 @@ impl ProcessManager {
                 process.exit_code = Some(0);
                 process.end_time = Some(Utc::now().timestamp());
                 process.stdout.push_str("\nProcess terminated.\n");
-                
+
                 log::info!("Process stopped: {} (PID: {})", process.name, pid);
                 Ok(())
             }
@@ -409,7 +427,9 @@ impl ProcessManager {
 
     /// Send input to a process
     pub fn send_input(&mut self, pid: &str, input: &str) -> Result<()> {
-        let process = self.processes.get_mut(pid)
+        let process = self
+            .processes
+            .get_mut(pid)
             .ok_or_else(|| KernelError::ProcessNotFound(pid.to_string()))?;
 
         if process.state != ProcessState::Running {
@@ -417,10 +437,10 @@ impl ProcessManager {
         }
 
         process.stdin_pending.push_str(input);
-        
+
         // Simulate echo for now
         process.stdout.push_str(input);
-        
+
         Ok(())
     }
 
@@ -441,14 +461,16 @@ impl ProcessManager {
 
     /// Get count of running processes
     pub fn running_count(&self) -> usize {
-        self.processes.values()
+        self.processes
+            .values()
             .filter(|p| p.state == ProcessState::Running || p.state == ProcessState::Starting)
             .count()
     }
 
     /// Get total memory usage by all processes
     pub fn memory_usage(&self) -> u64 {
-        self.processes.values()
+        self.processes
+            .values()
             .filter(|p| p.state == ProcessState::Running)
             .map(|p| p.memory_usage)
             .sum()
@@ -461,14 +483,14 @@ impl ProcessManager {
                 // Simulate CPU and memory fluctuations
                 // Use kernel uptime as seed to avoid relying on system clock during WASM tick
                 let seed = uptime.wrapping_add(process.start_time as u64);
-                
+
                 let variation = ((seed % 100) as f64) / 100.0;
                 process.cpu_usage = (process.cpu_usage + variation - 0.5).max(0.1).min(95.0);
-                
+
                 // Safe fluctuation of memory usage
                 let mem_factor = 1.0 + variation * 0.01 - 0.005;
                 process.memory_usage = (process.memory_usage as f64 * mem_factor) as u64;
-                
+
                 // Process stdin if any
                 if !process.stdin_pending.is_empty() {
                     let input = process.stdin_pending.clone();
@@ -480,22 +502,29 @@ impl ProcessManager {
         }
     }
 
-
-
     // ============================================================
     // Signal handling
     // ============================================================
 
     /// Send a signal to a process
     pub fn send_signal(&mut self, pid: &str, signal: Signal) -> Result<()> {
-        let process = self.processes.get_mut(pid)
+        let process = self
+            .processes
+            .get_mut(pid)
             .ok_or_else(|| KernelError::ProcessNotFound(pid.to_string()))?;
 
-        log::info!("Sending signal {:?} to process {} ({})", signal, pid, process.name);
+        log::info!(
+            "Sending signal {:?} to process {} ({})",
+            signal,
+            pid,
+            process.name
+        );
 
         // Check if process has a custom handler
         let signal_num = signal as i32;
-        let action = process.signal_handlers.get(&signal_num)
+        let action = process
+            .signal_handlers
+            .get(&signal_num)
             .cloned()
             .unwrap_or_else(|| signal.default_action());
 
@@ -504,18 +533,24 @@ impl ProcessManager {
                 process.state = ProcessState::Exited(128 + signal_num);
                 process.exit_code = Some(128 + signal_num);
                 process.end_time = Some(Utc::now().timestamp());
-                process.stdout.push_str(&format!("\nProcess terminated by signal {:?}\n", signal));
+                process
+                    .stdout
+                    .push_str(&format!("\nProcess terminated by signal {:?}\n", signal));
             }
             SignalAction::Stop => {
                 process.state = ProcessState::Stopped;
                 process.pending_signals.push(signal_num);
-                process.stdout.push_str(&format!("\nProcess stopped by signal {:?}\n", signal));
+                process
+                    .stdout
+                    .push_str(&format!("\nProcess stopped by signal {:?}\n", signal));
             }
             SignalAction::Continue => {
                 if process.state == ProcessState::Stopped {
                     process.state = ProcessState::Running;
                 }
-                process.stdout.push_str(&format!("\nProcess continued by signal {:?}\n", signal));
+                process
+                    .stdout
+                    .push_str(&format!("\nProcess continued by signal {:?}\n", signal));
             }
             SignalAction::Ignore => {
                 log::debug!("Process {} ignored signal {:?}", pid, signal);
@@ -527,7 +562,9 @@ impl ProcessManager {
 
     /// Kill a process with SIGKILL (force kill)
     pub fn kill_process(&mut self, pid: &str) -> Result<()> {
-        let process = self.processes.get_mut(pid)
+        let process = self
+            .processes
+            .get_mut(pid)
             .ok_or_else(|| KernelError::ProcessNotFound(pid.to_string()))?;
 
         log::info!("Killing process {} ({})", pid, process.name);
@@ -541,8 +578,15 @@ impl ProcessManager {
     }
 
     /// Set a signal handler for a process
-    pub fn set_signal_handler(&mut self, pid: &str, signal: Signal, action: SignalAction) -> Result<()> {
-        let process = self.processes.get_mut(pid)
+    pub fn set_signal_handler(
+        &mut self,
+        pid: &str,
+        signal: Signal,
+        action: SignalAction,
+    ) -> Result<()> {
+        let process = self
+            .processes
+            .get_mut(pid)
             .ok_or_else(|| KernelError::ProcessNotFound(pid.to_string()))?;
 
         process.signal_handlers.insert(signal as i32, action);
@@ -575,13 +619,20 @@ impl ProcessManager {
             writer.pipe_id = Some(pipe_id.clone());
         }
 
-        log::info!("Pipe created: {} ({} -> {})", pipe_id, writer_pid, reader_pid);
+        log::info!(
+            "Pipe created: {} ({} -> {})",
+            pipe_id,
+            writer_pid,
+            reader_pid
+        );
         Ok(pipe_id)
     }
 
     /// Write to a pipe
     pub fn write_to_pipe(&mut self, pipe_id: &str, data: &[u8]) -> Result<()> {
-        let pipe = self.pipes.get_mut(pipe_id)
+        let pipe = self
+            .pipes
+            .get_mut(pipe_id)
             .ok_or_else(|| KernelError::ExecutionError(format!("Pipe not found: {}", pipe_id)))?;
 
         pipe.buffer.extend_from_slice(data);
@@ -590,7 +641,9 @@ impl ProcessManager {
 
     /// Read from a pipe
     pub fn read_from_pipe(&mut self, pipe_id: &str, max_bytes: usize) -> Result<Vec<u8>> {
-        let pipe = self.pipes.get_mut(pipe_id)
+        let pipe = self
+            .pipes
+            .get_mut(pipe_id)
             .ok_or_else(|| KernelError::ExecutionError(format!("Pipe not found: {}", pipe_id)))?;
 
         let bytes_to_read = pipe.buffer.len().min(max_bytes);
@@ -600,7 +653,9 @@ impl ProcessManager {
 
     /// Close a pipe
     pub fn close_pipe(&mut self, pipe_id: &str) -> Result<()> {
-        let pipe = self.pipes.remove(pipe_id)
+        let pipe = self
+            .pipes
+            .remove(pipe_id)
             .ok_or_else(|| KernelError::ExecutionError(format!("Pipe not found: {}", pipe_id)))?;
 
         // Clear pipe_id from both processes
@@ -626,7 +681,10 @@ impl ProcessManager {
     /// Get base Linux environment
     fn get_base_env(&self) -> HashMap<String, String> {
         let mut env = HashMap::new();
-        env.insert("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string());
+        env.insert(
+            "PATH".to_string(),
+            "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string(),
+        );
         env.insert("HOME".to_string(), "/root".to_string());
         env.insert("TERM".to_string(), "xterm-256color".to_string());
         env.insert("SHELL".to_string(), "/bin/bash".to_string());
@@ -638,15 +696,18 @@ impl ProcessManager {
     /// Get default environment for a binary
     fn get_default_env(&self, binary: &BinaryInfo) -> HashMap<String, String> {
         let mut env = self.get_base_env();
-        
+
         // Standard Linux environment extras
-        env.insert("LD_LIBRARY_PATH".to_string(), "/usr/lib:/usr/local/lib".to_string());
-        
+        env.insert(
+            "LD_LIBRARY_PATH".to_string(),
+            "/usr/lib:/usr/local/lib".to_string(),
+        );
+
         // Binary-specific
         env.insert("TRMON_BINARY".to_string(), binary.name.clone());
         env.insert("TRMON_BINARY_ID".to_string(), binary.id.clone());
         env.insert("TRMON_SANDBOX".to_string(), "1".to_string());
-        
+
         env
     }
 }

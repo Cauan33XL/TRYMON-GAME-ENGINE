@@ -13,6 +13,7 @@
 
 import * as rust from '@wasm/pkg/trymon_kernel_rust.js';
 import { loadVFS, saveVFS } from './persistence';
+import { V86Emulator, type BinaryFile, type ExecutionResult as V86ExecutionResult } from '../../wasm/v86-emulator';
 
 // ============================================================
 // Types (mirror of kernel Rust structures)
@@ -77,6 +78,8 @@ export interface KernelState {
   filesystem_stats: VfsStats | null;
   state: SystemState;
   boot_logs: string[];
+  tvm_error?: string;
+  tvm_ready?: boolean;
 }
 
 export type KernelUpdateCallback = (state: KernelState) => void;
@@ -92,6 +95,10 @@ const _updateCallbacks: KernelUpdateCallback[] = [];
 
 let _tickInterval: ReturnType<typeof setInterval> | null = null;
 let _autoSaveInterval: ReturnType<typeof setInterval> | null = null;
+
+// v86 Emulator instance for real Linux execution
+let _v86Emulator: V86Emulator | null = null;
+let _v86Ready = false;
 
 // ============================================================
 // Core API
@@ -146,7 +153,7 @@ export async function init(): Promise<KernelState> {
         if (step < stabilization.length) {
           const s = stabilization[step];
           const realState = getState();
-          
+
           // Force UI update during stabilization
           _kernelState = {
             ...realState,
@@ -163,9 +170,9 @@ export async function init(): Promise<KernelState> {
           // Finish line
           const finalState = getState();
           _kernelState = finalState;
-          
+
           console.log('[KernelService] Boot sequence complete.');
-          
+
           // Restore VFS state from persistence
           loadVFS().then(savedVFS => {
             if (savedVFS) {
@@ -188,6 +195,23 @@ export async function init(): Promise<KernelState> {
 
           // Initialize Trymord Backend
           initTrymordBackend();
+
+          // Initialize TVM (Trymon Virtual Machine)
+          try {
+            console.log('[KernelService] Initializing TVM...');
+            rust.tvm_init();
+            console.log('[KernelService] TVM initialized successfully');
+            _kernelState = {
+              ..._kernelState!,
+              tvm_ready: true
+            };
+          } catch (e) {
+            console.error('[KernelService] TVM init failed:', e);
+            _kernelState = {
+              ..._kernelState!,
+              tvm_error: `TVM initialization failed: ${e}`
+            };
+          }
 
           // Final notify
           console.log('[KernelService] Notifying callbacks, state:', _kernelState?.state);
@@ -255,6 +279,8 @@ export function getState(): KernelState {
       filesystem_stats: status.filesystem_stats,
       state: status.state,
       boot_logs: status.boot_logs || [],
+      tvm_ready: _kernelState?.tvm_ready || false,
+      tvm_error: _kernelState?.tvm_error,
     };
   } catch {
     return {
@@ -264,8 +290,10 @@ export function getState(): KernelState {
       running_processes: [],
       memory_usage_bytes: 0,
       filesystem_stats: null,
-      state: 'Booting',
+      state: 'Booting' as SystemState,
       boot_logs: [],
+      tvm_ready: false,
+      tvm_error: undefined,
     };
   }
 }
@@ -527,7 +555,7 @@ export function cleanup(): void {
 
 function seedVirtualWeb() {
   console.log('[KernelService] Seeding Virtual Web Content...');
-  
+
   // Create /www structure
   rust.api_shell_input('mkdir -p /www/store /www/social /www/cloud');
 
@@ -616,6 +644,333 @@ function initTrymordBackend() {
     ];
     writeFile('/var/log/trymord/history.json', JSON.stringify(initialHistory));
   }
+}
+
+// ============================================================
+// TVM Functions
+// ============================================================
+
+export interface TvmExecutionResult {
+  success: boolean;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  error?: string;
+  stats?: {
+    instructions_executed: number;
+    function_calls: number;
+    syscall_count: number;
+    allocations: number;
+    cycles: number;
+  };
+}
+
+export interface TvmPackageInfo {
+  packageId: string;
+  name: string;
+  format: string;
+  size: number;
+}
+
+export function getTVMSandboxStatus(): any | null {
+  if (!_kernelReady) return null;
+  try {
+    const result = rust.tvm_sandbox_status();
+    return JSON.parse(result);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compile an ELF or wrap a binary into TVM bytecode.
+ * Returns the TVM package ID to use with executeTvmPackage / installTvmPackage.
+ */
+export async function compileBinaryToTrymon(
+  file: File
+): Promise<{ packageId: string; format: string; originalSize: number }> {
+  assertReady();
+
+  console.log(`[KernelService] Starting compilation: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+
+  const data = new Uint8Array(await file.arrayBuffer());
+  const name = file.name.replace(/\.[^.]+$/, ''); // strip extension
+
+  // Detect format
+  const isELF = data[0] === 0x7f && data[1] === 0x45 && data[2] === 0x4c && data[3] === 0x46;
+  const isTrymon = data[0] === 0x54 && data[1] === 0x52 && data[2] === 0x59 && data[3] === 0x4d;
+  const hasSquashFS = data.length > 4 && (() => {
+    for (let i = 0; i < Math.min(data.length - 4, 10000); i++) {
+      if (data[i] === 0x68 && data[i + 1] === 0x73 && data[i + 2] === 0x71 && data[i + 3] === 0x73) {
+        return true;
+      }
+    }
+    return false;
+  })();
+
+  console.log(`[KernelService] Format detection: ELF=${isELF}, Trymon=${isTrymon}, HasSquashFS=${hasSquashFS}`);
+
+  let packageId: string;
+  let format: string;
+
+  if (isTrymon) {
+    // Already .trymon — load directly
+    console.log(`[KernelService] Loading .trymon package directly`);
+    try {
+      packageId = rust.tvm_load(data);
+      format = 'Trymon';
+      console.log(`[KernelService] Successfully loaded: ${packageId}`);
+    } catch (err: any) {
+      console.error(`[KernelService] tvm_load failed:`, err);
+      throw new Error(`Failed to load .trymon file: ${err.message || String(err)}`);
+    }
+  } else if (isELF) {
+    // ELF binary — compile to TVM via WASM
+    if (hasSquashFS) {
+      console.warn(`[KernelService] AppImage detected (ELF + SquashFS) - compiling as ELF wrapper`);
+    }
+
+    console.log(`[KernelService] Compiling ELF to TVM...`);
+    try {
+      packageId = rust.tvm_compile_elf(data, name);
+      format = 'ELF→Trymon';
+      console.log(`[KernelService] Compilation successful: ${packageId}`);
+    } catch (err: any) {
+      console.error(`[KernelService] tvm_compile_elf failed:`, err);
+      throw new Error(`ELF compilation failed: ${err.message || String(err)}`);
+    }
+  } else {
+    // Unknown format — wrap as generic payload
+    console.log(`[KernelService] Unknown format, wrapping as generic TVM package`);
+
+    // Create a minimal TVM bytecode: HALT(0)
+    const haltBytecode = new Uint8Array([
+      // HALT opcode = 0x58, operand = 4 bytes (exit code 0)
+      0x58, 0x00, 0x00, 0x00, 0x00
+    ]);
+    // Build a .trymon v2 container manually
+    const metaStr = JSON.stringify({
+      name,
+      version: '1.0.0',
+      entry: 'main',
+      description: `Wrapped binary: ${file.name}`,
+    });
+    const metaBytes = new TextEncoder().encode(metaStr);
+    const pkg = new Uint8Array(4 + 1 + 4 + metaBytes.length + 4 + haltBytecode.length);
+    let off = 0;
+    // Magic "TRYM"
+    pkg[off++] = 0x54; pkg[off++] = 0x52; pkg[off++] = 0x59; pkg[off++] = 0x4d;
+    // Version 2
+    pkg[off++] = 2;
+    // Meta length (LE32)
+    const ml = metaBytes.length;
+    pkg[off++] = ml & 0xff; pkg[off++] = (ml >> 8) & 0xff;
+    pkg[off++] = (ml >> 16) & 0xff; pkg[off++] = (ml >> 24) & 0xff;
+    // Meta bytes
+    pkg.set(metaBytes, off); off += ml;
+    // Code length (LE32)
+    const cl = haltBytecode.length;
+    pkg[off++] = cl & 0xff; pkg[off++] = (cl >> 8) & 0xff;
+    pkg[off++] = (cl >> 16) & 0xff; pkg[off++] = (cl >> 24) & 0xff;
+    // Code bytes
+    pkg.set(haltBytecode, off);
+
+    try {
+      packageId = rust.tvm_load(pkg);
+      format = 'Unknown→Trymon';
+      console.log(`[KernelService] Generic package loaded: ${packageId}`);
+    } catch (err: any) {
+      console.error(`[KernelService] tvm_load (generic) failed:`, err);
+      throw new Error(`Failed to load wrapped package: ${err.message || String(err)}`);
+    }
+  }
+
+  console.log(`[KernelService] Compilation complete: ${format} -> ${packageId}`);
+  return { packageId, format, originalSize: data.length };
+}
+
+/**
+ * Execute a loaded TVM package by ID.
+ */
+export function executeTvmPackage(packageId: string): TvmExecutionResult {
+  assertReady();
+  try {
+    const json = rust.tvm_execute(packageId);
+    return JSON.parse(json) as TvmExecutionResult;
+  } catch (e: any) {
+    return {
+      success: false,
+      exit_code: -1,
+      stdout: '',
+      stderr: '',
+      error: String(e),
+    };
+  }
+}
+
+/**
+ * Install a loaded TVM package to the VFS.
+ * Returns the AppInfo JSON.
+ */
+export function installTvmPackage(packageId: string, name: string): any | null {
+  if (!_kernelReady) return null;
+  try {
+    const result = rust.trymon_install_tvm(packageId, name);
+    return JSON.parse(result);
+  } catch (e) {
+    console.error('[KernelService] installTvmPackage failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Export a compiled TVM package as .trymon binary data and trigger download.
+ */
+export function downloadTvmPackage(packageId: string, fileName: string): boolean {
+  if (!_kernelReady) return false;
+  try {
+    const data = rust.tvm_export_package(packageId) as Uint8Array;
+    // Create a copy as plain array to avoid SharedArrayBuffer issues
+    const plainArray = Array.from(data);
+    const blob = new Blob([new Uint8Array(plainArray)], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName.endsWith('.trymon') ? fileName : `${fileName}.trymon`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (e) {
+    console.error('[KernelService] downloadTvmPackage failed:', e);
+    return false;
+  }
+}
+
+// ============================================================
+// v86 Emulator API for Real Linux Execution
+// ============================================================
+
+/**
+ * Initialize the v86 emulator for real Linux execution
+ */
+export async function initV86(screenElement?: HTMLCanvasElement): Promise<boolean> {
+  if (_v86Ready) return true;
+
+  console.log('[KernelService] Initializing v86 emulator for real Linux execution...');
+
+  try {
+    _v86Emulator = new V86Emulator({
+      memorySize: 256,
+      videoMemorySize: 8,
+    });
+
+    // Disable shell mode for real Linux boot
+    if (_v86Emulator) {
+      (_v86Emulator as any).state.shellMode = false;
+    }
+
+    const result = await _v86Emulator.initialize(screenElement);
+    _v86Ready = result;
+
+    if (result) {
+      console.log('[KernelService] v86 emulator initialized successfully');
+      // Start the emulator
+      _v86Emulator.start();
+    } else {
+      console.error('[KernelService] v86 emulator initialization failed');
+    }
+
+    return result;
+  } catch (e) {
+    console.error('[KernelService] v86 initialization failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Execute an AppImage via v86 with real Linux emulation
+ */
+export async function executeAppImageViaV86(
+  binaryId: string,
+  fileName: string,
+  fileData: Uint8Array,
+  options?: {
+    extractAndRun?: boolean;
+    timeout?: number;
+    args?: string[];
+  }
+): Promise<V86ExecutionResult | null> {
+  if (!_v86Ready || !_v86Emulator) {
+    console.error('[KernelService] v86 not ready for AppImage execution');
+    return {
+      success: false,
+      output: 'v86 emulator not initialized',
+      exitCode: -1,
+      duration: 0
+    };
+  }
+
+  console.log(`[KernelService] Executing AppImage via v86: ${fileName}`);
+
+  // Create BinaryFile object
+  const binaryFile: BinaryFile = {
+    id: binaryId,
+    name: fileName,
+    size: fileData.length,
+    type: 'appimage',
+    data: fileData.buffer as ArrayBuffer,
+    uploadedAt: new Date(),
+    status: 'pending'
+  };
+
+  try {
+    // Mount the binary first
+    const mounted = await _v86Emulator.mountBinary(binaryFile);
+    if (!mounted) {
+      return {
+        success: false,
+        output: 'Failed to mount AppImage',
+        exitCode: -1,
+        duration: 0
+      };
+    }
+
+    // Execute via v86
+    const result = await _v86Emulator.executeAppImage(binaryFile, {
+      extractAndRun: options?.extractAndRun ?? true,
+      timeout: options?.timeout ?? 120000,
+      args: options?.args ?? []
+    });
+
+    console.log(`[KernelService] v86 execution result:`, result);
+    return result;
+  } catch (e) {
+    console.error('[KernelService] v86 AppImage execution failed:', e);
+    return {
+      success: false,
+      output: `Execution error: ${e instanceof Error ? e.message : String(e)}`,
+      exitCode: -1,
+      duration: 0
+    };
+  }
+}
+
+/**
+ * Send input to v86 emulator (for interactive apps)
+ */
+export function sendV86Input(input: string): void {
+  if (_v86Emulator && _v86Ready) {
+    _v86Emulator.sendInput(input);
+  }
+}
+
+/**
+ * Get v86 emulator state
+ */
+export function getV86State(): any {
+  return _v86Emulator ? (_v86Emulator as any).state : null;
 }
 
 export { rust };

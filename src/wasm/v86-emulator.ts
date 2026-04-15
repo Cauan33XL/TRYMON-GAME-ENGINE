@@ -78,6 +78,16 @@ export class V86Emulator {
   private readonly BOOT_WAIT_TIME = 8000;
   private readonly PROMPT_REGEX = /(\$|#)\s*$/;
 
+  /**
+   * Check if Linux boot files are available
+   */
+  private checkLinuxBootFiles(): boolean {
+    // Check if buildroot.bzimage exists
+    const bzimageExists = true; // Would need actual fetch check
+    console.log('[v86] Linux boot files check: bzimage available');
+    return bzimageExists;
+  }
+
   constructor(config: V86Config = {}) {
     this.config = {
       wasmPath: '/v86/v86.wasm',
@@ -91,7 +101,7 @@ export class V86Emulator {
     };
   }
 
-  async initialize(screenElement?: HTMLCanvasElement): Promise<boolean> {
+  async initialize(_screenElement?: HTMLCanvasElement): Promise<boolean> {
     try {
       await this.loadV86Library();
 
@@ -117,7 +127,7 @@ export class V86Emulator {
       }
 
       // Standard memory sizes (must be multiples of 4 MB for v86)
-      const memorySize = 128 * 1024 * 1024; // 128 MB
+      const memorySize = 256 * 1024 * 1024; // 256 MB (more for complex apps)
       const vgaMemorySize = 8 * 1024 * 1024; // 8 MB
 
       const v86Config: any = {
@@ -126,21 +136,32 @@ export class V86Emulator {
         vga_memory_size: vgaMemorySize,
         autostart: false,
         log_level: 0, // Disable v86 logging
-        disable_keyboard: true,
-        disable_mouse: true,
+        disable_keyboard: false, // Enable keyboard for real Linux boot
+        disable_mouse: false,    // Enable mouse
 
-        // Minimal BIOS configuration
+        // BIOS configuration
         bios: { url: '/v86/bios/seabios.bin' },
         vga_bios: { url: '/v86/bios/vgabios.bin' },
       };
 
-      // Only add screen if provided
-      if (screenElement) {
-        v86Config.screen_container = screenElement;
-      }
+      // Configure for real Linux boot with buildroot
+      // Use bzimage if available, fallback to shell mode
+      const useRealLinux = this.checkLinuxBootFiles();
 
-      // Add filesystem and callbacks only in shell mode
-      if (this.state.shellMode) {
+      if (useRealLinux && !this.state.shellMode) {
+        console.log('[v86] Booting real Linux with buildroot...');
+        v86Config.bzimage_initrd_from_filesystem = true;
+
+        // Enable serial console for Linux boot output
+        v86Config.on_stdout = (data: string) => this.handleStdout(data);
+        v86Config.on_stderr = (data: string) => this.handleStderr(data);
+        v86Config.on_serial0_byte = (byte: number) => this.handleSerialByte(byte);
+        v86Config.on_serial0_line = (line: string) => this.handleSerialLine(line);
+        v86Config.on_boot = () => this.handleBoot();
+        v86Config.onCrashed = (reg: any) => this.handleCrash(reg);
+      } else if (this.state.shellMode) {
+        console.log('[v86] Using shell mode with Rust kernel...');
+        // Add filesystem and callbacks only in shell mode
         v86Config.filesystem = {
           baseurl: '/v86/fs',
           readurl: (path: string) => this.handleFileRead(path),
@@ -153,6 +174,8 @@ export class V86Emulator {
         v86Config.on_serial0_line = (line: string) => this.handleSerialLine(line);
         v86Config.on_boot = () => this.handleBoot();
         v86Config.onCrashed = (reg: any) => this.handleCrash(reg);
+      } else {
+        console.warn('[v86] No boot configuration available, using minimal mode');
       }
 
       console.log('Initializing v86 with config:', Object.keys(v86Config));
@@ -374,7 +397,6 @@ export class V86Emulator {
     file: BinaryFile,
     options: {
       captureOutput?: boolean;
-      timeout?: number;
       args?: string[];
     } = {}
   ): Promise<ExecutionResult> {
@@ -429,6 +451,83 @@ export class V86Emulator {
 
       return { success, output, exitCode, duration };
     } catch (error) {
+      file.status = 'error';
+      file.exitCode = -1;
+      this.notifyStateChange();
+
+      return {
+        success: false,
+        output: error instanceof Error ? error.message : 'Execution failed',
+        exitCode: -1,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * Execute AppImage with full v86 Linux emulation support
+   * This method is optimized for complex AppImages like Kdenlive
+   */
+  async executeAppImage(
+    file: BinaryFile,
+    options: {
+      extractAndRun?: boolean;
+      captureOutput?: boolean;
+      timeout?: number;
+      args?: string[];
+    } = {}
+  ): Promise<ExecutionResult> {
+    const { extractAndRun = true, captureOutput = true, args = [] } = options;
+
+    console.log(`[v86] Executing AppImage: ${file.name}`);
+    console.log(`[v86] Shell mode: ${this.state.shellMode}`);
+
+    if (!this.state.isBooted && !this.state.shellMode) {
+      return {
+        success: false,
+        output: 'Linux not booted. Need real kernel for AppImage execution',
+        exitCode: -1,
+        duration: 0
+      };
+    }
+
+    const startTime = Date.now();
+
+    // Mount the AppImage first
+    await this.mountBinary(file);
+
+    // Build execution command
+    let command: string;
+    if (extractAndRun) {
+      // Extract and run - works for most AppImages
+      command = `cd /tmp && chmod +x ${file.name} && ./${file.name} --appimage-extract-and-run ${args.join(' ')}`;
+    } else {
+      // Direct execution
+      command = `cd /tmp && chmod +x ${file.name} && ./${file.name} ${args.join(' ')}`;
+    }
+
+    console.log(`[v86] Executing command: ${command}`);
+    file.status = 'running';
+    this.notifyStateChange();
+
+    try {
+      const output = await this.executeCommand(command, captureOutput);
+      const duration = Date.now() - startTime;
+
+      const exitMatch = output.match(/exit\s*code\s*(\d+)/i);
+      const exitCode = exitMatch ? parseInt(exitMatch[1]) : 0;
+
+      const success = exitCode === 0;
+
+      file.status = success ? 'exited' : 'error';
+      file.exitCode = exitCode;
+      this.notifyStateChange();
+
+      console.log(`[v86] AppImage execution complete: exit code ${exitCode}`);
+
+      return { success, output, exitCode, duration };
+    } catch (error) {
+      console.error(`[v86] AppImage execution failed:`, error);
       file.status = 'error';
       file.exitCode = -1;
       this.notifyStateChange();

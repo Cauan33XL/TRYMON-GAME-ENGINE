@@ -1,12 +1,12 @@
 //! Virtual File System Module
-//! 
+//!
 //! Provides a virtual filesystem for mounted binaries and extracted files.
 //! This simulates a Linux filesystem hierarchy within WASM memory.
 
+use crate::error::{KernelError, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 use uuid::Uuid;
-use crate::error::{Result, KernelError};
 
 /// File type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,7 +170,12 @@ impl VirtualFileSystem {
     }
 
     /// Create a file with content
-    pub fn create_file(&mut self, path: &str, content: Vec<u8>, executable: bool) -> Result<String> {
+    pub fn create_file(
+        &mut self,
+        path: &str,
+        content: Vec<u8>,
+        executable: bool,
+    ) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().timestamp();
         let size = content.len();
@@ -199,14 +204,17 @@ impl VirtualFileSystem {
 
     /// Read a file's content
     pub fn read_file(&self, path: &str) -> Result<Vec<u8>> {
-        let file = self.files.get(path)
+        let file = self
+            .files
+            .get(path)
             .ok_or_else(|| KernelError::FileSystemError(format!("File not found: {}", path)))?;
 
         if file.file_type != FileType::File {
             return Err(KernelError::FileSystemError("Not a file".into()));
         }
 
-        file.content.clone()
+        file.content
+            .clone()
             .ok_or_else(|| KernelError::FileSystemError("File has no content".into()))
     }
 
@@ -226,14 +234,17 @@ impl VirtualFileSystem {
 
     /// List directory contents
     pub fn list_directory(&self, path: &str) -> Result<Vec<VirtualFile>> {
-        let dir = self.files.get(path)
-            .ok_or_else(|| KernelError::FileSystemError(format!("Directory not found: {}", path)))?;
+        let dir = self.files.get(path).ok_or_else(|| {
+            KernelError::FileSystemError(format!("Directory not found: {}", path))
+        })?;
 
         if dir.file_type != FileType::Directory {
             return Err(KernelError::FileSystemError("Not a directory".into()));
         }
 
-        let children: Vec<VirtualFile> = self.files.values()
+        let children: Vec<VirtualFile> = self
+            .files
+            .values()
             .filter(|f| f.parent.as_deref() == Some(path))
             .cloned()
             .collect();
@@ -252,7 +263,7 @@ impl VirtualFileSystem {
         };
 
         self.mounts.push(mount);
-        
+
         // Create mount point directory if it doesn't exist
         if !self.files.contains_key(path) {
             self.create_directory(path)?;
@@ -264,7 +275,9 @@ impl VirtualFileSystem {
 
     /// Unmount a filesystem
     pub fn unmount(&mut self, path: &str) -> Result<()> {
-        let pos = self.mounts.iter()
+        let pos = self
+            .mounts
+            .iter()
             .position(|m| m.path == path)
             .ok_or_else(|| KernelError::FileSystemError(format!("Not mounted: {}", path)))?;
 
@@ -294,7 +307,10 @@ impl VirtualFileSystem {
             log::info!("Deleted {}", path);
             Ok(())
         } else {
-            Err(KernelError::FileSystemError(format!("File not found: {}", path)))
+            Err(KernelError::FileSystemError(format!(
+                "File not found: {}",
+                path
+            )))
         }
     }
 
@@ -304,7 +320,10 @@ impl VirtualFileSystem {
             self.cwd = path.to_string();
             Ok(())
         } else {
-            Err(KernelError::FileSystemError(format!("Directory not found: {}", path)))
+            Err(KernelError::FileSystemError(format!(
+                "Directory not found: {}",
+                path
+            )))
         }
     }
 
@@ -333,10 +352,26 @@ impl VirtualFileSystem {
 
     /// Get filesystem statistics
     pub fn stats(&self) -> FileSystemStats {
-        let total_files = self.files.values().filter(|f| f.file_type == FileType::File).count();
-        let total_dirs = self.files.values().filter(|f| f.file_type == FileType::Directory).count();
-        let total_size: usize = self.files.values()
-            .filter_map(|f| if f.file_type == FileType::File { Some(f.size) } else { None })
+        let total_files = self
+            .files
+            .values()
+            .filter(|f| f.file_type == FileType::File)
+            .count();
+        let total_dirs = self
+            .files
+            .values()
+            .filter(|f| f.file_type == FileType::Directory)
+            .count();
+        let total_size: usize = self
+            .files
+            .values()
+            .filter_map(|f| {
+                if f.file_type == FileType::File {
+                    Some(f.size)
+                } else {
+                    None
+                }
+            })
             .sum();
 
         FileSystemStats {
@@ -351,7 +386,11 @@ impl VirtualFileSystem {
     pub fn complete_path(&self, partial: &str) -> Option<String> {
         let (dir_path, file_prefix) = if partial.contains('/') {
             let last_slash = partial.rfind('/').unwrap();
-            let d = if last_slash == 0 { "/" } else { &partial[..last_slash] };
+            let d = if last_slash == 0 {
+                "/"
+            } else {
+                &partial[..last_slash]
+            };
             let f = &partial[last_slash + 1..];
             (d, f)
         } else {
@@ -359,7 +398,8 @@ impl VirtualFileSystem {
         };
 
         let files = self.list_directory(dir_path).ok()?;
-        let matches: Vec<&VirtualFile> = files.iter()
+        let matches: Vec<&VirtualFile> = files
+            .iter()
             .filter(|f| f.name.starts_with(file_prefix))
             .collect();
 
@@ -377,23 +417,27 @@ impl VirtualFileSystem {
     /// Delete a file or directory recursively
     pub fn delete_recursive(&mut self, path: &str) -> Result<()> {
         // First, collect all children paths
-        let children: Vec<String> = self.files.keys()
+        let children: Vec<String> = self
+            .files
+            .keys()
             .filter(|p| p.starts_with(path) && *p != path)
             .cloned()
             .collect();
-        
+
         // Delete all children
         for child in children {
             self.files.remove(&child);
         }
-        
+
         // Delete the path itself
         self.delete(path)
     }
 
     /// Copy a file or directory
     pub fn copy(&mut self, src: &str, dst: &str, recursive: bool) -> Result<()> {
-        let src_file = self.files.get(src)
+        let src_file = self
+            .files
+            .get(src)
             .ok_or_else(|| KernelError::FileSystemError(format!("Source not found: {}", src)))?
             .clone();
 
@@ -404,16 +448,20 @@ impl VirtualFileSystem {
             }
             FileType::Directory => {
                 if !recursive {
-                    return Err(KernelError::FileSystemError("Is a directory (use -r)".into()));
+                    return Err(KernelError::FileSystemError(
+                        "Is a directory (use -r)".into(),
+                    ));
                 }
                 self.create_directory(dst)?;
-                
+
                 // Copy all children
-                let children: Vec<VirtualFile> = self.files.values()
+                let children: Vec<VirtualFile> = self
+                    .files
+                    .values()
                     .filter(|f| f.parent.as_deref() == Some(src))
                     .cloned()
                     .collect();
-                
+
                 for child in children {
                     let child_name = child.name.clone();
                     let new_src = if src.ends_with('/') {
@@ -437,7 +485,8 @@ impl VirtualFileSystem {
 
     /// Rename/move a file or directory
     pub fn rename(&mut self, src: &str, dst: &str) -> Result<()> {
-        self.files.get(src)
+        self.files
+            .get(src)
             .ok_or_else(|| KernelError::FileSystemError(format!("Source not found: {}", src)))?;
 
         // Update the source file's path
@@ -449,7 +498,9 @@ impl VirtualFileSystem {
         }
 
         // Update all children paths
-        let children: Vec<String> = self.files.keys()
+        let children: Vec<String> = self
+            .files
+            .keys()
             .filter(|p| p.starts_with(src) && *p != src)
             .cloned()
             .collect();
@@ -469,9 +520,11 @@ impl VirtualFileSystem {
 
     /// Change file permissions
     pub fn chmod(&mut self, path: &str, permissions: u32) -> Result<()> {
-        let file = self.files.get_mut(path)
+        let file = self
+            .files
+            .get_mut(path)
             .ok_or_else(|| KernelError::FileSystemError(format!("File not found: {}", path)))?;
-        
+
         file.permissions = permissions as u16;
         file.executable = (permissions & 0o111) != 0; // Check if any execute bit is set
         file.modified_at = chrono::Utc::now().timestamp();
@@ -481,7 +534,7 @@ impl VirtualFileSystem {
     /// Find files matching a pattern
     pub fn find_files(&self, path: &str, name_filter: Option<&str>) -> Result<Vec<String>> {
         let mut results = Vec::new();
-        
+
         for (file_path, file) in &self.files {
             if !file_path.starts_with(path) {
                 continue;
@@ -505,13 +558,13 @@ impl VirtualFileSystem {
         if pattern == "*" {
             return true;
         }
-        
+
         // Convert glob pattern to regex-like matching
         let _pattern_regex = pattern
             .replace(".", "\\.")
             .replace("*", ".*")
             .replace("?", ".");
-        
+
         // Simple implementation - just check if pattern matches
         text == pattern || pattern == "*"
     }
@@ -543,7 +596,9 @@ impl VirtualFileSystem {
 
     /// Create a hard link
     pub fn create_hard_link(&mut self, link_path: &str, target: &str) -> Result<String> {
-        let target_file = self.files.get(target)
+        let target_file = self
+            .files
+            .get(target)
             .ok_or_else(|| KernelError::FileSystemError(format!("Target not found: {}", target)))?
             .clone();
 
@@ -559,23 +614,28 @@ impl VirtualFileSystem {
 
     /// Read a symbolic link
     pub fn read_symlink(&self, link_path: &str) -> Result<String> {
-        let file = self.files.get(link_path)
-            .ok_or_else(|| KernelError::FileSystemError(format!("File not found: {}", link_path)))?;
+        let file = self.files.get(link_path).ok_or_else(|| {
+            KernelError::FileSystemError(format!("File not found: {}", link_path))
+        })?;
 
         if file.file_type != FileType::Symlink {
             return Err(KernelError::FileSystemError("Not a symbolic link".into()));
         }
 
         let target = String::from_utf8_lossy(
-            file.content.as_ref().ok_or_else(|| KernelError::FileSystemError("Empty symlink".into()))?
-        ).to_string();
-        
+            file.content
+                .as_ref()
+                .ok_or_else(|| KernelError::FileSystemError("Empty symlink".into()))?,
+        )
+        .to_string();
+
         Ok(target)
     }
 
     /// Get file information
     pub fn get_file_info(&self, path: &str) -> Result<VirtualFile> {
-        self.files.get(path)
+        self.files
+            .get(path)
             .cloned()
             .ok_or_else(|| KernelError::FileSystemError(format!("File not found: {}", path)))
     }
@@ -594,7 +654,10 @@ impl VirtualFileSystem {
     pub fn resolve_path(&self, path: &str) -> Result<String> {
         let path = if path.starts_with('~') {
             // Expand home directory
-            let home = self.files.get("/root").map(|_| "/root".to_string())
+            let home = self
+                .files
+                .get("/root")
+                .map(|_| "/root".to_string())
                 .unwrap_or_else(|| "/".to_string());
             format!("{}{}", home, &path[1..])
         } else if path.starts_with('/') {
@@ -604,15 +667,15 @@ impl VirtualFileSystem {
         };
 
         // Split and resolve components
-        let parts: Vec<&str> = path.split('/')
-            .filter(|p| !p.is_empty())
-            .collect();
+        let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
 
         let mut resolved = Vec::new();
         for part in parts {
             match part {
                 "." => continue,
-                ".." => { resolved.pop(); }
+                ".." => {
+                    resolved.pop();
+                }
                 component => resolved.push(component),
             }
         }
@@ -635,9 +698,7 @@ impl VirtualFileSystem {
 
     /// Resolve symlinks in a path
     fn resolve_symlinks(&self, path: &str) -> Result<String> {
-        let parts: Vec<&str> = path.split('/')
-            .filter(|p| !p.is_empty())
-            .collect();
+        let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
 
         let mut resolved = String::new();
         for part in &parts {
@@ -648,19 +709,26 @@ impl VirtualFileSystem {
             if let Some(file) = self.files.get(&resolved) {
                 if file.file_type == FileType::Symlink {
                     let target = String::from_utf8_lossy(
-                        file.content.as_ref()
-                            .ok_or_else(|| KernelError::FileSystemError("Empty symlink".into()))?
-                    ).to_string();
+                        file.content
+                            .as_ref()
+                            .ok_or_else(|| KernelError::FileSystemError("Empty symlink".into()))?,
+                    )
+                    .to_string();
 
                     // Resolve target path
                     let target_path = if target.starts_with('/') {
                         target
                     } else {
-                        format!("{}/{}", resolved.rsplitn(2, '/').last().unwrap_or("/"), target)
+                        format!(
+                            "{}/{}",
+                            resolved.rsplitn(2, '/').last().unwrap_or("/"),
+                            target
+                        )
                     };
 
                     // Replace current resolved path with target
-                    let remaining: Vec<&str> = parts[parts.iter().position(|&p| p == *part).unwrap() + 1..].to_vec();
+                    let remaining: Vec<&str> =
+                        parts[parts.iter().position(|&p| p == *part).unwrap() + 1..].to_vec();
                     let mut full_path = target_path;
                     for rem in remaining {
                         full_path.push('/');
@@ -677,7 +745,9 @@ impl VirtualFileSystem {
 
     /// Check if a process with given uid/gid has permission to access a file
     pub fn check_permissions(&self, path: &str, uid: u32, gid: u32, required: u16) -> Result<()> {
-        let file = self.files.get(path)
+        let file = self
+            .files
+            .get(path)
             .ok_or_else(|| KernelError::FileSystemError(format!("File not found: {}", path)))?;
 
         // Root (uid 0) has access to everything
@@ -706,9 +776,10 @@ impl VirtualFileSystem {
             }
         }
 
-        Err(KernelError::FileSystemError(
-            format!("Permission denied: {}", path)
-        ))
+        Err(KernelError::FileSystemError(format!(
+            "Permission denied: {}",
+            path
+        )))
     }
 
     /// Begin a transaction (for journaling)
@@ -722,7 +793,12 @@ impl VirtualFileSystem {
 
     /// Record a change in the current transaction
     #[allow(dead_code)]
-    fn record_change(&mut self, path: &str, old_state: Option<VirtualFile>, new_state: Option<VirtualFile>) {
+    fn record_change(
+        &mut self,
+        path: &str,
+        old_state: Option<VirtualFile>,
+        new_state: Option<VirtualFile>,
+    ) {
         if let Some(entry) = self.journal.last_mut() {
             entry.changes.push(FileChange {
                 path: path.to_string(),
@@ -735,7 +811,11 @@ impl VirtualFileSystem {
     /// Commit the current transaction
     pub fn commit_transaction(&mut self) -> Result<()> {
         if let Some(entry) = self.journal.pop() {
-            log::info!("Transaction committed: {} ({} changes)", entry.operation, entry.changes.len());
+            log::info!(
+                "Transaction committed: {} ({} changes)",
+                entry.operation,
+                entry.changes.len()
+            );
         }
         Ok(())
     }
@@ -743,7 +823,11 @@ impl VirtualFileSystem {
     /// Rollback the current transaction
     pub fn rollback_transaction(&mut self) -> Result<()> {
         if let Some(entry) = self.journal.pop() {
-            log::info!("Transaction rolled back: {} ({} changes)", entry.operation, entry.changes.len());
+            log::info!(
+                "Transaction rolled back: {} ({} changes)",
+                entry.operation,
+                entry.changes.len()
+            );
             // Restore old states
             for change in entry.changes {
                 match (change.old_state, change.new_state) {

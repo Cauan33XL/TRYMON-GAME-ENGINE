@@ -785,6 +785,195 @@ export function kernel_trymon_run_app(app_id) {
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
+
+/**
+ * Execute a .trymon package directly (Execute mode)
+ * @param {string} binary_id
+ * @returns {string}
+ */
+export function trymon_execute_package(binary_id) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(binary_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.trymon_execute_package(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Install a TVM bytecode package (Install mode)
+ * @param {string} package_id
+ * @param {string} name
+ * @returns {string}
+ */
+export function trymon_install_tvm(package_id, name) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(package_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.trymon_install_tvm(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * Compile ELF binary to TVM bytecode
+ * @param {Uint8Array} elf_data
+ * @param {string} name
+ * @returns {string}
+ */
+export function tvm_compile_elf(elf_data, name) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passArray8ToWasm0(elf_data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.tvm_compile_elf(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * Execute a loaded TVM package
+ * @param {string} package_id
+ * @returns {string}
+ */
+export function tvm_execute(package_id) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(package_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.tvm_execute(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Export a loaded TVM package as .trymon binary data (returns base64)
+ * @param {string} package_id
+ * @returns {Uint8Array}
+ */
+export function tvm_export_package(package_id) {
+    const ptr0 = passStringToWasm0(package_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.tvm_export_package(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * Initialize the TVM subsystem
+ */
+export function tvm_init() {
+    const ret = wasm.tvm_init();
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * Check if TVM is initialized
+ * @returns {boolean}
+ */
+export function tvm_is_initialized() {
+    const ret = wasm.tvm_is_initialized();
+    return ret !== 0;
+}
+
+/**
+ * Load a TVM bytecode package (.trymon format v2)
+ * @param {Uint8Array} data
+ * @returns {string}
+ */
+export function tvm_load(data) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.tvm_load(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Get TVM sandbox status
+ * @returns {string}
+ */
+export function tvm_sandbox_status() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.tvm_sandbox_status();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
