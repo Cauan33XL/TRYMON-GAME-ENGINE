@@ -1,5 +1,5 @@
 /**
- * TRYMON Binary Engine - WASM Emulator Integration
+ * Trymon OS - WASM Emulator Integration
  * Complete flow for executing Linux binaries via v86 WebAssembly emulation
  */
 
@@ -734,7 +734,7 @@ export class V86Emulator {
     this.state.isBooted = true;
 
     if (!this.config.autostart) {
-      this.executeCommand('echo "TRYMON Binary Engine Ready"');
+      this.executeCommand('echo "Trymon OS Ready"');
     }
 
     this.notifyStateChange();

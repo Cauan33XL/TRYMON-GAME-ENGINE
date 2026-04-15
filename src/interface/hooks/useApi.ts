@@ -1,5 +1,5 @@
 /**
- * API Hooks for TRYMON Binary Engine
+ * API Hooks for Trymon OS
  * Integration layer for backend communication
  */
 

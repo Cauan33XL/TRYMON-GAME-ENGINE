@@ -819,8 +819,8 @@ function _setupFilesystemHierarchy() {
 
   // Basic system files
   writeFile('/etc/hostname', 'trymon');
-  writeFile('/etc/os-release', 'NAME="Trymon OS"\nVERSION="0.1.0"\nID=trymon\nPRETTY_NAME="Trymon Binary Engine OS"');
-  writeFile('/etc/motd', '\nWelcome to Trymon Binary Engine OS!\nType "help" to list binaries.\n');
+  writeFile('/etc/os-release', 'NAME="Trymon OS"\nVERSION="0.1.0"\nID=trymon\nPRETTY_NAME="Trymon OS"');
+  writeFile('/etc/motd', '\nWelcome to Trymon OS!\nType "help" to list binaries.\n');
 }
 
 /**

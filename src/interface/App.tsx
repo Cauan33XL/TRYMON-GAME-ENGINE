@@ -1,6 +1,6 @@
 /**
  * Main Application Component
- * TRYMON Binary Engine - OS Desktop Interface
+ * Trymon OS - Desktop Interface
  * 
  * KERNEL-FIRST ARCHITECTURE:
  * The kernel initializes BEFORE this component mounts (see main.tsx).

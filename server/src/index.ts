@@ -30,9 +30,9 @@ app.use('/v86/assets', express.static(PUBLIC_V86_DIR));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', engine: 'TRYMON BINARY ENGINE' });
+  res.json({ status: 'ok', engine: 'Trymon OS' });
 });
 
 app.listen(PORT, () => {
-  console.log(`TRYMON Backend running on http://localhost:${PORT}`);
+  console.log(`Trymon OS Backend running on http://localhost:${PORT}`);
 });

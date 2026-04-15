@@ -2,7 +2,7 @@
 name = "trymon-kernel-rust"
 version = "0.1.0"
 edition = "2021"
-description = "TRYMON Binary Engine - Rust Kernel Module for Linux Binary Execution in WASM"
+description = "Trymon OS - Rust Kernel Module for Linux Binary Execution in WASM"
 authors = ["Trymon Team"]
 license = "GPL-3.0"
 

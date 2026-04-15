@@ -1,7 +1,7 @@
 {
-  "name": "trymon-binary-engine",
+  "name": "trymon-os",
   "version": "1.0.0",
-  "description": "TRYMON-BINARY-ENGINE: Run native Linux binaries (.AppImage, .deb, .rpm) on the Web.",
+  "description": "Trymon OS: Run native Linux binaries (.AppImage, .deb, .rpm) on the Web.",
   "main": "script.js",
   "scripts": {
     "dev": "vite",

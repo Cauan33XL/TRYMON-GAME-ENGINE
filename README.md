@@ -1,6 +1,6 @@
-# TRYMON-BINARY-ENGINE
+# Trymon OS
 
-**Trymon Binary Engine** is a high-performance web platform that executes native Linux binaries directly in the browser. It combines WebAssembly-based virtualization with a native Rust kernel to create **Trymon OS**, a full-featured operating system simulation running entirely in the browser.
+**Trymon OS** is a high-performance web platform that executes native Linux binaries directly in the browser. It combines WebAssembly-based virtualization with a native Rust kernel to create a full-featured operating system simulation running entirely in the browser.
 
 ---
 
@@ -763,4 +763,4 @@ panic = "unwind"     # Better error messages
 
 ---
 
-**Trymon Binary Engine** - Bringing native Linux binaries to the web.
+**Trymon OS** - Bringing native Linux binaries to the web.

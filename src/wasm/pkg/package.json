@@ -4,7 +4,7 @@
   "collaborators": [
     "Trymon Team"
   ],
-  "description": "TRYMON Binary Engine - Rust Kernel Module for Linux Binary Execution in WASM",
+  "description": "Trymon OS - Rust Kernel Module for Linux Binary Execution in WASM",
   "version": "0.1.0",
   "license": "GPL-3.0",
   "files": [
